@@ -229,9 +229,42 @@ export const _deactivateStaleBatch = internalMutation({
   },
 });
 
+// ---------------------------------------------------------------------------
+// Snapshot diff helpers
+// ---------------------------------------------------------------------------
+
 /**
- * Insert a sponsorSnapshots row. Also computes added/removed diffs
- * against the previous snapshot when status is "ok".
+ * Compute the added/removed sponsor diff between two consecutive snapshots.
+ *
+ * Because we only store the aggregate `activeCount` per snapshot (not the full
+ * set of normalised names), the diff is a net-delta split: if the active count
+ * rose by N then addedSinceLast=N and removedSinceLast=0, and vice-versa.
+ *
+ * Returns `{ addedSinceLast: undefined, removedSinceLast: undefined }` when:
+ * - there is no previous snapshot (first-ever run), or
+ * - the current run has status "error" (counts are unreliable).
+ *
+ * @param currentActiveCount  - Active-sponsor count from the current run
+ * @param previousActiveCount - Active-sponsor count from the last snapshot, or undefined
+ * @param currentStatus       - "ok" | "error"
+ */
+export function computeSnapshotDiff(
+  currentActiveCount: number,
+  previousActiveCount: number | undefined,
+  currentStatus: "ok" | "error",
+): { addedSinceLast: number | undefined; removedSinceLast: number | undefined } {
+  if (previousActiveCount === undefined || currentStatus === "error") {
+    return { addedSinceLast: undefined, removedSinceLast: undefined };
+  }
+  return {
+    addedSinceLast: Math.max(0, currentActiveCount - previousActiveCount),
+    removedSinceLast: Math.max(0, previousActiveCount - currentActiveCount),
+  };
+}
+
+/**
+ * Insert a sponsorSnapshots row. Computes added/removed diffs against
+ * the most recent previous snapshot when status is "ok".
  */
 export const _recordSnapshot = internalMutation({
   args: {
@@ -249,15 +282,11 @@ export const _recordSnapshot = internalMutation({
       .order("desc")
       .first();
 
-    const addedSinceLast =
-      previous !== null && args.status === "ok"
-        ? Math.max(0, args.activeCount - previous.activeCount)
-        : undefined;
-
-    const removedSinceLast =
-      previous !== null && args.status === "ok"
-        ? Math.max(0, previous.activeCount - args.activeCount)
-        : undefined;
+    const { addedSinceLast, removedSinceLast } = computeSnapshotDiff(
+      args.activeCount,
+      previous?.activeCount,
+      args.status,
+    );
 
     await ctx.db.insert("sponsorSnapshots", {
       fetchedAt: args.fetchedAt,
