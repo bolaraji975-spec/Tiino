@@ -8,10 +8,12 @@
  * @module
  */
 
+import type * as crons from "../crons.js";
 import type * as lib_matchCompanyToSponsor from "../lib/matchCompanyToSponsor.js";
 import type * as lib_normaliseName from "../lib/normaliseName.js";
 import type * as lib_parseSponsorCsv from "../lib/parseSponsorCsv.js";
 import type * as lib_parseSponsorRow from "../lib/parseSponsorRow.js";
+import type * as sponsors_refresh from "../sponsors/refresh.js";
 
 import type {
   ApiFromModules,
@@ -20,10 +22,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  crons: typeof crons;
   "lib/matchCompanyToSponsor": typeof lib_matchCompanyToSponsor;
   "lib/normaliseName": typeof lib_normaliseName;
   "lib/parseSponsorCsv": typeof lib_parseSponsorCsv;
   "lib/parseSponsorRow": typeof lib_parseSponsorRow;
+  "sponsors/refresh": typeof sponsors_refresh;
 }>;
 
 /**
