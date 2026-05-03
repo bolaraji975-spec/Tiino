@@ -9,6 +9,7 @@
  */
 
 import type * as crons from "../crons.js";
+import type * as lib_alerts from "../lib/alerts.js";
 import type * as lib_matchCompanyToSponsor from "../lib/matchCompanyToSponsor.js";
 import type * as lib_normaliseName from "../lib/normaliseName.js";
 import type * as lib_parseSponsorCsv from "../lib/parseSponsorCsv.js";
@@ -25,6 +26,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   crons: typeof crons;
+  "lib/alerts": typeof lib_alerts;
   "lib/matchCompanyToSponsor": typeof lib_matchCompanyToSponsor;
   "lib/normaliseName": typeof lib_normaliseName;
   "lib/parseSponsorCsv": typeof lib_parseSponsorCsv;

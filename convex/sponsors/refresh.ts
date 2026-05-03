@@ -13,6 +13,11 @@ import { action, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { parseSponsorCsv } from "../lib/parseSponsorCsv";
+import {
+  shouldAlertOnDrop,
+  sendRefreshFailureAlert,
+  sendDropAlert,
+} from "../lib/alerts";
 
 const REGISTER_PAGE_URL =
   "https://www.gov.uk/government/publications/register-of-licensed-sponsors-workers";
@@ -76,14 +81,16 @@ export const refreshSponsorRegister = action({
     try {
       csvUrl = await discoverCsvUrl();
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
       await ctx.runMutation(internal.sponsors.refresh._recordSnapshot, {
         fetchedAt,
         csvUrl: REGISTER_PAGE_URL,
         totalRows: 0,
         activeCount: 0,
         status: "error",
-        errorMessage: err instanceof Error ? err.message : String(err),
+        errorMessage,
       });
+      await sendRefreshFailureAlert(errorMessage);
       throw err;
     }
 
@@ -96,14 +103,16 @@ export const refreshSponsorRegister = action({
       }
       csvText = await csvRes.text();
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
       await ctx.runMutation(internal.sponsors.refresh._recordSnapshot, {
         fetchedAt,
         csvUrl,
         totalRows: 0,
         activeCount: 0,
         status: "error",
-        errorMessage: err instanceof Error ? err.message : String(err),
+        errorMessage,
       });
+      await sendRefreshFailureAlert(errorMessage);
       throw err;
     }
 
@@ -138,14 +147,24 @@ export const refreshSponsorRegister = action({
       hasMore = count > 0;
     }
 
-    // --- 6. Record snapshot ---
-    await ctx.runMutation(internal.sponsors.refresh._recordSnapshot, {
-      fetchedAt,
-      csvUrl,
-      totalRows,
-      activeCount: records.length,
-      status: "ok",
-    });
+    // --- 6. Record snapshot and check for drop alert ---
+    const { previousActiveCount } = await ctx.runMutation(
+      internal.sponsors.refresh._recordSnapshot,
+      {
+        fetchedAt,
+        csvUrl,
+        totalRows,
+        activeCount: records.length,
+        status: "ok",
+      },
+    );
+
+    if (
+      previousActiveCount !== undefined &&
+      shouldAlertOnDrop(previousActiveCount, records.length)
+    ) {
+      await sendDropAlert(previousActiveCount, records.length);
+    }
 
     return { totalRows, activeCount: records.length, deactivated };
   },
@@ -275,7 +294,7 @@ export const _recordSnapshot = internalMutation({
     status: v.union(v.literal("ok"), v.literal("error")),
     errorMessage: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ previousActiveCount: number | undefined }> => {
     const previous = await ctx.db
       .query("sponsorSnapshots")
       .withIndex("byFetchedAt")
@@ -298,5 +317,7 @@ export const _recordSnapshot = internalMutation({
       status: args.status,
       errorMessage: args.errorMessage,
     });
+
+    return { previousActiveCount: previous?.activeCount };
   },
 });
