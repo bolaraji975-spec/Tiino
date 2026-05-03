@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Tino — Find jobs that will actually sponsor your UK visa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; padding: 0; margin: 0; }
+:root {
+  --bg: #021e1e; --bg-mid: #032a2a; --bg-hi: #033636;
+  --teal: #1BAAC1; --teal-12: rgba(27,170,193,0.12); --teal-20: rgba(27,170,193,0.20);
+  --teal-30: rgba(27,170,193,0.30); --teal-dim: #0a2828;
+  --w100: #ffffff; --w80: rgba(255,255,255,0.80); --w60: rgba(255,255,255,0.60);
+  --w40: rgba(255,255,255,0.40); --w20: rgba(255,255,255,0.20); --w10: rgba(255,255,255,0.10);
+  --w06: rgba(255,255,255,0.06); --w03: rgba(255,255,255,0.03);
+  --glass: rgba(3,40,40,0.80); --gborder: rgba(255,255,255,0.10);
+  --font: 'Plus Jakarta Sans', sans-serif; --mono: 'DM Mono', monospace;
+}
+html, body { height: 100%; overflow: hidden; }
+body { font-family: var(--font); background: var(--bg); color: var(--w100); -webkit-font-smoothing: antialiased; }
+
+.bg-layer { position: fixed; inset: 0; z-index: 0; background: radial-gradient(ellipse 80% 60% at 60% 40%, #033e3e 0%, #021e1e 70%); }
+.bg-grid {
+  position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  background-image: linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+  background-size: 72px 72px; animation: gridDrift 18s linear infinite;
+}
+@keyframes gridDrift { from { background-position: 0 0; } to { background-position: 72px 72px; } }
+.interactive-grid { position: fixed; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.grid-cell { position: absolute; border: 1px solid rgba(255,255,255,0); background: transparent; opacity: 0; transition: opacity 0.1s linear, border-color 0.1s linear, background-color 0.1s linear; }
+
+/* ── WORD REVEAL ── */
+@keyframes wordIn {
+  0%   { opacity:0; transform: translateY(0.5em); filter: blur(4px); }
+  100% { opacity:1; transform: translateY(0);     filter: blur(0); }
+}
+.w { display:inline-block; opacity:0; animation: wordIn 0.6s cubic-bezier(0.16,1,0.3,1) forwards; }
+
+/* ── SPLIT-BODY REVEAL ── */
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(16px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+.body-reveal { opacity:0; animation: fadeUp 0.6s cubic-bezier(0.16,1,0.3,1) forwards; }
+
+/* ── STAT CHIPS ── */
+@keyframes chipIn {
+  from { opacity:0; transform:translateY(10px) scale(0.95); }
+  to   { opacity:1; transform:translateY(0)     scale(1); }
+}
+.chip-reveal { opacity:0; animation: chipIn 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+
+/* ── APP FRAME ── */
+@keyframes frameIn {
+  from { opacity:0; transform:translateX(28px) scale(0.97); }
+  to   { opacity:1; transform:translateX(0)    scale(1); }
+}
+.frame-reveal { opacity:0; animation: frameIn 0.7s cubic-bezier(0.16,1,0.3,1) forwards; }
+
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 52px;
+  display: flex; align-items: center; justify-content: space-between; padding: 0 28px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  background: rgba(2,20,20,0.55); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+}
+.nav-logo { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.nav-beta { font-family: var(--mono); font-size: 9px; font-weight: 400; letter-spacing: 1.5px; text-transform: uppercase; color: var(--teal); border: 1px solid var(--teal-30); padding: 3px 8px; border-radius: 3px; }
+.nav-right { display: flex; align-items: center; gap: 20px; }
+.nav-link { font-size: 13px; font-weight: 400; color: var(--w60); text-decoration: none; transition: color 0.15s; cursor: pointer; }
+.nav-link:hover { color: var(--w100); }
+.nav-cta { font-size: 13px; font-weight: 600; color: var(--teal-dim); background: var(--teal); padding: 7px 16px; text-decoration: none; transition: background 0.15s; cursor: pointer; border: none; }
+.nav-cta:hover { background: #21c8e2; }
+
+.stage { position: fixed; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; padding: 52px 0 132px; overflow: hidden; }
+
+.slide-inner { width: 100%; max-width: 1300px; padding: 0 60px; opacity: 0; transform: translateY(32px) scale(0.98); transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1); }
+.slide-inner.visible { opacity: 1; transform: translateY(0) scale(1); }
+.slide-inner.exit { opacity: 0; transform: translateY(-20px) scale(0.97); transition: opacity 0.3s cubic-bezier(0.4,0,1,1), transform 0.3s cubic-bezier(0.4,0,1,1); }
+
+/* HERO */
+.hero-eyebrow { font-family: var(--mono); font-size: 11px; font-weight: 300; color: var(--teal); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 26px; opacity: 0.85; }
+.hero-h1 { font-size: clamp(3.4rem, 7vw, 7rem); font-weight: 700; line-height: 1.04; letter-spacing: -0.03em; color: var(--w100); margin-bottom: 30px; }
+.hero-h1 em { font-style: normal; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 8px; }
+.hero-h1 .ac { color: var(--teal); }
+.hero-stats { display: flex; gap: 10px; flex-wrap: wrap; }
+.stat-chip { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; color: var(--w60); background: rgba(27,170,193,0.07); border: 1px solid rgba(27,170,193,0.18); padding: 7px 14px; border-radius: 4px; }
+.stat-chip strong { color: var(--teal); font-weight: 700; }
+.stat-chip-sep { width: 3px; height: 3px; border-radius: 50%; background: var(--teal-30); }
+
+/* SPLIT */
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
+.split-label { font-family: var(--mono); font-size: 10px; font-weight: 300; color: rgba(27,170,193,0.55); letter-spacing: 1.8px; text-transform: uppercase; margin-bottom: 18px; }
+.split-h2 { font-size: clamp(2rem, 3.5vw, 3.4rem); font-weight: 700; line-height: 1.08; letter-spacing: -0.025em; color: var(--w100); margin-bottom: 18px; }
+.split-h2 em { font-style: normal; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 5px; }
+.split-h2 .ac { color: var(--teal); }
+.split-body { font-size: 15px; font-weight: 400; line-height: 1.75; color: var(--w60); max-width: 400px; }
+
+/* APP FRAME */
+.af { background: var(--glass); border: 1px solid var(--gborder); border-radius: 14px; overflow: hidden; box-shadow: 0 40px 100px rgba(0,0,0,0.55), 0 0 0 1px rgba(27,170,193,0.05), inset 0 1px 0 rgba(255,255,255,0.06); backdrop-filter: blur(4px); }
+.af-bar { display: flex; align-items: center; justify-content: space-between; padding: 0 14px; height: 38px; background: rgba(2,22,22,0.9); border-bottom: 1px solid rgba(255,255,255,0.07); }
+.af-bar-title { font-size: 11px; font-weight: 600; color: var(--w80); }
+.af-avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--teal); display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 800; color: var(--teal-dim); }
+.af-body { padding: 14px; }
+.af-side-layout { display: flex; height: 280px; }
+.af-sidebar { width: 40px; background: rgba(2,18,18,0.8); border-right: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 6px; flex-shrink: 0; }
+.af-icon { width: 24px; height: 24px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--w40); }
+.af-icon.on { background: rgba(27,170,193,0.12); color: var(--teal); }
+.af-main { flex: 1; padding: 12px; overflow: hidden; }
+.gc { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 10px 12px; }
+.sh { background: rgba(74,222,128,0.12); color: #4ade80; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 3px; display: inline-flex; align-items: center; gap: 3px; }
+.sm { background: rgba(251,191,36,0.12); color: #fbbf24; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 3px; display: inline-flex; align-items: center; gap: 3px; }
+.sdot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+.pill { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 100px; font-size: 10px; font-weight: 500; border: 1px solid rgba(255,255,255,0.14); color: rgba(255,255,255,0.55); }
+.pill.on { background: rgba(27,170,193,0.10); border-color: rgba(27,170,193,0.30); color: var(--teal); }
+.prog { height: 2px; background: rgba(255,255,255,0.07); border-radius: 1px; overflow: hidden; margin-top: 3px; }
+.prog-fill { height: 100%; background: var(--teal); border-radius: 1px; }
+
+
+.footer { position: fixed; bottom: 0; left: 0; right: 0; z-index: 10; height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-top: 1px solid rgba(255,255,255,0.06); background: rgba(2,16,16,0.6); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.footer-links { width: 28%; display: flex; gap: 16px; flex-wrap: wrap; }
+.footer-link { font-size: 12px; color: var(--w40); text-decoration: none; transition: color 0.15s; }
+.footer-link:hover { color: var(--w80); }
+.controls { display: flex; align-items: center; gap: 14px; }
+.ctrl-btn { cursor: pointer; font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09); padding: 7px 16px; border-radius: 0; font-family: var(--font); transition: all 0.15s; }
+.ctrl-btn:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.16); color: var(--w80); }
+.dots { display: flex; align-items: center; gap: 6px; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.18); cursor: pointer; transition: all 0.45s cubic-bezier(0.34,1.56,0.64,1); }
+.dot.on { background: rgba(255,255,255,0.70); width: 18px; border-radius: 3px; }
+.counter { font-family: var(--mono); font-size: 10px; font-weight: 300; color: rgba(255,255,255,0.30); min-width: 36px; text-align: right; }
+
+.cta-strip { position: fixed; bottom: 72px; left: 0; right: 0; z-index: 9; display: flex; justify-content: center; }
+.cta-btn { display: inline-flex; align-items: center; gap: 12px; background: var(--teal); color: var(--teal-dim); font-family: var(--font); font-size: 14px; font-weight: 700; padding: 16px 36px; text-decoration: none; cursor: pointer; border: none; transition: background 0.25s cubic-bezier(0.16,1,0.3,1), gap 0.35s cubic-bezier(0.34,1.56,0.64,1), transform 0.25s cubic-bezier(0.34,1.56,0.64,1); }
+.cta-btn:hover { background: #21c8e2; gap: 20px; transform: scale(1.02); }
+.cta-arrow { fill: none; stroke: var(--teal-dim); width: 16px; height: 16px; transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1); }
+.cta-btn:hover .cta-arrow { transform: translateX(5px); }
+
+.prog-bar { position: fixed; bottom: 72px; left: 0; height: 2px; background: rgba(27,170,193,0.5); z-index: 11; pointer-events: none; }
+
+@media(max-width:1100px) { .split { gap: 48px; } }
+@media(max-width:860px) { .split { grid-template-columns: 1fr; } .split-screen { display: none; } .hero-h1 { font-size: clamp(2.6rem, 8vw, 4rem); } .slide-inner { padding: 0 24px; } }
+@media(max-width:600px) { .footer-links { display: none; } .nav-link { display: none; } }
+@media(prefers-reduced-motion:reduce) { .bg-grid { animation: none; } .slide-inner { transition: none; } }
+</style>
+</head>
+<body>
+<div class="bg-layer"></div>
+<div class="bg-grid"></div>
+<div class="interactive-grid" id="iGrid"></div>
+
+<header class="nav">
+  <div class="nav-logo">
+    <svg width="54" height="22" viewBox="0 0 56 26" fill="none" aria-label="Tino">
+      <line x1="2" y1="3" x2="13" y2="3" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round"/>
+      <line x1="7.5" y1="3" x2="7.5" y2="23" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round"/>
+      <rect x="16" y="2" width="6" height="6" rx="1.8" fill="#1BAAC1"/>
+      <line x1="19" y1="10" x2="19" y2="23" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round"/>
+      <line x1="24" y1="10" x2="24" y2="23" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round"/>
+      <path d="M24 13 Q24 10 27.5 10 Q31 10 31 13 L31 23" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" fill="none"/>
+      <rect x="34" y="10" width="11" height="13" rx="4.5" stroke="rgba(255,255,255,0.85)" stroke-width="2" fill="none"/>
+    </svg>
+    <span class="nav-beta">Beta</span>
+  </div>
+  <div class="nav-right">
+    <a class="nav-link" href="#">How it works</a>
+    <a class="nav-link" href="#">Pricing</a>
+    <a class="nav-cta" href="#">Sign in</a>
+  </div>
+</header>
+
+<div class="stage" id="stage"></div>
+
+<div class="cta-strip">
+  <button class="cta-btn" id="ctaBtn">
+    <span id="ctaText">Browse sponsored jobs</span>
+    <svg class="cta-arrow" viewBox="0 0 16 16" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 8h10M9 4l4 4-4 4"/>
+    </svg>
+  </button>
+</div>
+
+<footer class="footer">
+  <div class="footer-links">
+    <a class="footer-link" href="#">Privacy</a>
+    <a class="footer-link" href="#">Terms</a>
+    <a class="footer-link" href="#">Blog</a>
+    <a class="footer-link" href="#">LinkedIn</a>
+  </div>
+  <div class="controls">
+    <button class="ctrl-btn" id="prevBtn">← Prev</button>
+    <div class="dots" id="dots"></div>
+    <button class="ctrl-btn" id="nextBtn">Next →</button>
+  </div>
+  <div class="counter" id="counter">1 / 8</div>
+</footer>
+
+<div class="prog-bar" id="progBar" style="width:0%"></div>
+
+<script>
+const LOGO = `<svg width="32" height="14" viewBox="0 0 56 26" fill="none"><line x1="2" y1="3" x2="13" y2="3" stroke="rgba(255,255,255,0.8)" stroke-width="2" stroke-linecap="round"/><line x1="7.5" y1="3" x2="7.5" y2="23" stroke="rgba(255,255,255,0.8)" stroke-width="2" stroke-linecap="round"/><rect x="16" y="2" width="6" height="6" rx="1.8" fill="#1BAAC1"/><line x1="19" y1="10" x2="19" y2="23" stroke="rgba(255,255,255,0.8)" stroke-width="2" stroke-linecap="round"/><line x1="24" y1="10" x2="24" y2="23" stroke="rgba(255,255,255,0.8)" stroke-width="2" stroke-linecap="round"/><path d="M24 13 Q24 10 27.5 10 Q31 10 31 13 L31 23" stroke="rgba(255,255,255,0.8)" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="34" y="10" width="11" height="13" rx="4.5" stroke="rgba(255,255,255,0.8)" stroke-width="2" fill="none"/></svg>`;
+
+const TOPBAR = t => `<div class="af-bar"><div style="display:flex;align-items:center;gap:8px;">${LOGO}<span class="af-bar-title">${t}</span></div><div class="af-avatar">AT</div></div>`;
+
+const SIDEBAR = a => `<div class="af-sidebar">
+  <div class="af-icon ${a===0?'on':''}" title="Jobs">◉</div>
+  <div class="af-icon ${a===1?'on':''}" title="Tracker">▤</div>
+  <div class="af-icon ${a===2?'on':''}" title="CV">≡</div>
+  <div class="af-icon ${a===3?'on':''}" title="Analytics">↗</div>
+  <div style="margin-top:auto;" class="af-icon" title="Sign out">↩</div>
+</div>`;
+
+function sLogin() {
+  return `<div class="af" style="max-width:320px;margin:0 auto;">${TOPBAR('Sign in')}
+  <div class="af-body" style="padding:20px;">
+    <div style="margin-bottom:18px;">
+      <div style="font-size:15px;font-weight:700;margin-bottom:5px;letter-spacing:-0.3px;">Welcome back.</div>
+      <div style="font-size:11px;color:rgba(255,255,255,0.52);">Sign in to your sponsorship tracker</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:13px;">
+      <div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.52);margin-bottom:5px;font-weight:500;letter-spacing:0.2px;">Email</div>
+        <div style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.16);border-radius:5px;padding:8px 11px;font-size:11px;color:rgba(255,255,255,0.40);">you@example.com</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.52);margin-bottom:5px;font-weight:500;letter-spacing:0.2px;">Password</div>
+        <div style="background:rgba(255,255,255,0.07);border:1px solid rgba(27,170,193,0.45);border-radius:5px;padding:8px 11px;font-size:11px;color:rgba(255,255,255,0.55);">••••••••</div>
+      </div>
+      <div style="text-align:right;font-size:10px;color:#1BAAC1;cursor:pointer;">Forgot password?</div>
+    </div>
+    <div style="background:#1BAAC1;color:#0a2828;padding:10px;text-align:center;font-size:12px;font-weight:700;margin-bottom:11px;cursor:pointer;border-radius:2px;">Sign in →</div>
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:11px;">
+      <div style="flex:1;height:1px;background:rgba(255,255,255,0.10);"></div>
+      <span style="font-size:10px;color:rgba(255,255,255,0.45);">or</span>
+      <div style="flex:1;height:1px;background:rgba(255,255,255,0.10);"></div>
+    </div>
+    <div style="border:1px solid rgba(255,255,255,0.16);border-radius:2px;padding:9px;text-align:center;font-size:11px;color:rgba(255,255,255,0.65);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;">
+      <span style="font-weight:800;color:#4285f4;font-size:13px;">G</span>Continue with Google
+    </div>
+    <div style="text-align:center;margin-top:12px;font-size:10px;color:rgba(255,255,255,0.48);">No account? <span style="color:#1BAAC1;cursor:pointer;">Create one free →</span></div>
+  </div></div>`;
+}
+
+function sOnboarding() {
+  const steps = ['Visa type','Upload CV','Your roles','Alerts'];
+  return `<div class="af" style="max-width:420px;margin:0 auto;">${TOPBAR('Get started')}
+  <div class="af-body">
+    <div style="display:flex;align-items:center;margin-bottom:18px;overflow-x:auto;scrollbar-width:none;">
+      ${steps.map((s,i)=>`<div style="display:flex;align-items:center;gap:0;"><div style="display:flex;align-items:center;gap:5px;padding:4px 0;"><div style="width:18px;height:18px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;background:${i<2?'#1BAAC1':'rgba(255,255,255,0.08)'};color:${i<2?'#0a2828':'rgba(255,255,255,0.38)'};">${i<2?'✓':(i+1)}</div><span style="font-size:11px;white-space:nowrap;color:${i===1?'#1BAAC1':'rgba(255,255,255,0.42)'};">${s}</span></div>${i<3?`<div style="width:18px;height:1px;background:rgba(255,255,255,0.12);margin:0 5px;flex-shrink:0;"></div>`:''}</div>`).join('')}
+    </div>
+    <div style="text-align:center;margin-bottom:14px;">
+      <div style="font-size:14px;font-weight:700;margin-bottom:6px;letter-spacing:-0.2px;">Upload your CV</div>
+      <div style="font-size:11px;color:rgba(255,255,255,0.52);line-height:1.55;max-width:260px;margin:0 auto;">Claude reads it and suggests matching job titles automatically.</div>
+    </div>
+    <div style="border:1px dashed rgba(27,170,193,0.30);border-radius:7px;padding:22px;text-align:center;background:rgba(27,170,193,0.03);margin-bottom:12px;">
+      <div style="font-size:22px;margin-bottom:7px;opacity:0.55;">↑</div>
+      <div style="font-size:12px;font-weight:600;margin-bottom:4px;">Drop your CV here</div>
+      <div style="font-size:10px;color:rgba(255,255,255,0.48);">PDF or Word · max 10MB · click to browse</div>
+    </div>
+    <div style="font-size:10px;color:rgba(255,255,255,0.45);text-align:center;margin-bottom:13px;">ⓘ Your CV is never shared with employers</div>
+    <div style="display:flex;gap:8px;">
+      <div style="flex:1;border:1px solid rgba(255,255,255,0.16);border-radius:2px;padding:9px;text-align:center;font-size:11px;color:rgba(255,255,255,0.52);cursor:pointer;">← Back</div>
+      <div style="flex:2;background:#1BAAC1;color:#0a2828;border-radius:2px;padding:9px;text-align:center;font-size:11px;font-weight:700;cursor:pointer;">Continue →</div>
+    </div>
+  </div></div>`;
+}
+
+function sJobs() {
+  const jobs = [
+    {ab:'DE',bg:'#c41230',t:'Senior Software Engineer',co:'Deliveroo',loc:'London',s:'sh',sv:'High · 91',sal:'£75k – £95k',age:'2h',tag:'Direct hire'},
+    {ab:'KP',bg:'#00338d',t:'Backend Engineer',co:'KPMG Technology',loc:'Manchester',s:'sh',sv:'High · 88',sal:'£60k – £75k',age:'5h',tag:'Direct hire'},
+    {ab:'SP',bg:'#1db954',t:'Platform Engineer',co:'Spotify',loc:'London',s:'sh',sv:'High · 94',sal:'£80k – £105k',age:'3h',tag:'Sponsor confirmed'},
+    {ab:'JL',bg:'#007a5e',t:'Full Stack Developer',co:'John Lewis',loc:'London',s:'sm',sv:'Medium · 67',sal:'£55k – £70k',age:'1d',tag:'Agency posting'},
+  ];
+  return `<div class="af" style="width:100%;">${TOPBAR('Jobs feed')}
+  <div class="af-side-layout">${SIDEBAR(0)}<div class="af-main">
+    <div style="margin-bottom:9px;">
+      <div style="font-size:12px;font-weight:700;margin-bottom:3px;letter-spacing:-0.2px;">Jobs for you</div>
+      <div style="font-size:10px;color:rgba(255,255,255,0.50);">847 verified sponsor roles · updated today</div>
+    </div>
+    <div style="display:flex;gap:4px;margin-bottom:9px;flex-wrap:wrap;">${['All roles','High score','Direct hire','Remote','£40k+'].map((f,i)=>`<span class="pill${i===0?' on':''}">${f}</span>`).join('')}</div>
+    <div style="display:flex;flex-direction:column;gap:6px;">${jobs.map(j=>`
+    <div class="gc" style="display:flex;align-items:flex-start;gap:9px;padding:9px 10px;">
+      <div style="width:26px;height:26px;border-radius:5px;background:${j.bg};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;flex-shrink:0;">${j.ab}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap;">
+          <span style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;">${j.t}</span>
+          <span class="${j.s}"><span class="sdot"></span>${j.sv}</span>
+        </div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.50);margin-bottom:3px;">${j.co} · ${j.loc} · ${j.age} ago</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.58);">● ${j.sal} · ${j.tag}</div>
+        <div style="display:flex;gap:5px;margin-top:7px;">
+          <div style="background:rgba(27,170,193,0.10);border:1px solid rgba(27,170,193,0.28);color:#1BAAC1;font-size:10px;font-weight:700;padding:4px 8px;border-radius:3px;cursor:pointer;">Generate CV ↗</div>
+          <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.14);color:rgba(255,255,255,0.55);font-size:10px;padding:4px 8px;border-radius:3px;cursor:pointer;">Save</div>
+          <div style="background:#1BAAC1;color:#0a2828;font-size:10px;font-weight:700;padding:4px 8px;border-radius:3px;cursor:pointer;margin-left:auto;">Apply →</div>
+        </div>
+      </div>
+    </div>`).join('')}</div>
+  </div></div></div>`;
+}
+
+function sTracker() {
+  return `<div class="af" style="width:100%;font-family:'Plus Jakarta Sans',sans-serif;">
+    ${TOPBAR('Tracker')}
+    <div style="display:flex;height:280px;">
+      ${SIDEBAR(1)}
+      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+        <!-- Topbar -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px 0;flex-shrink:0;">
+          <div>
+            <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.9);letter-spacing:-0.2px;">Application tracker</div>
+            <div style="font-size:10px;color:rgba(255,255,255,0.50);margin-top:2px;">Showing 24 applications</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:5px;">
+            <div style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.09);border-radius:5px;padding:4px 8px;">
+              <svg width="9" height="9" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="4.5" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/><path d="M10 10l3 3" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round"/></svg>
+              <span style="font-size:10px;color:rgba(255,255,255,0.45);">Search…</span>
+            </div>
+            <div style="background:#1BAAC1;color:#0a2828;font-size:8px;font-weight:700;padding:4px 7px;border-radius:3px;cursor:pointer;">+ Add</div>
+          </div>
+        </div>
+        <!-- Stage tabs -->
+        <div style="display:flex;padding:0 12px;margin-top:8px;overflow-x:auto;scrollbar-width:none;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,0.07);">
+          ${[['All','24','on'],['Saved','4',''],['Applied','8',''],['Acknowledged','5',''],['Interview','3',''],['Offer','1','']].map(([l,n,a])=>`
+          <div style="display:flex;align-items:center;gap:4px;padding:5px 9px 6px;font-size:10px;font-weight:400;white-space:nowrap;cursor:pointer;border-bottom:2px solid ${a?'#1BAAC1':'transparent'};color:${a?'rgba(255,255,255,0.9)':'rgba(255,255,255,0.38)'};">
+            ${l}
+            <span style="font-size:9px;padding:1px 5px;border-radius:8px;background:${a?'rgba(27,170,193,0.12)':'rgba(255,255,255,0.09)'};color:${a?'#1BAAC1':'rgba(255,255,255,0.48)'};">${n}</span>
+          </div>`).join('')}
+        </div>
+        <!-- Stats row -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:7px 12px;flex-shrink:0;">
+          ${[['24','↑ +8','Applications'],['38%','↑ +12%','Response rate'],['12d','↑ 3d slower','Avg. interview'],['1','Wise · £95k','Active offer']].map(([v,c,l],i)=>`
+          <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 8px;">
+            <div style="font-size:14px;font-weight:700;letter-spacing:-0.5px;color:rgba(255,255,255,0.9);">${v}</div>
+            <div style="font-size:8px;margin-top:1px;color:${i===2?'rgba(255,107,107,0.9)':'rgba(27,170,193,0.85)'};">${c}</div>
+            <div style="font-size:10px;color:rgba(255,255,255,0.48);margin-top:2px;">${l}</div>
+          </div>`).join('')}
+        </div>
+        <!-- Table -->
+        <div style="flex:1;overflow-y:auto;scrollbar-width:none;padding:0 12px 10px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.07);">
+                ${['Role','Stage','Score','Applied','Next step','Salary'].map(h=>`<th style="font-size:10px;font-weight:500;letter-spacing:0.2px;color:rgba(255,255,255,0.50);padding:6px 8px;text-align:left;white-space:nowrap;">${h}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${[
+                ['Staff Engineer','Wise','offer','sc-h','93','Jan 18','Decide by Feb 7 ⚡','£95,000','upcoming'],
+                ['Tech Lead','Revolut','interview','sc-h','86','Jan 15','Tomorrow 2pm 🎯','£90,000','upcoming'],
+                ['SWE III','Google DeepMind','interview','sc-h','97','Jan 12','Feb 3 · Technical','£105,000',''],
+                ['Senior SWE','Deliveroo','acknowledged','sc-h','91','Jan 23','Awaiting response','£85,000',''],
+                ['Platform Eng','Spotify','acknowledged','sc-h','94','Jan 22','Awaiting response','£95,000',''],
+                ['Backend Eng','KPMG Tech','applied','sc-h','88','Jan 20','—','£68,000',''],
+                ['Senior Dev','Sky UK','acknowledged','sc-m','68','Jan 19','Awaiting response','£72,000',''],
+                ['Full Stack Dev','Monzo Bank','applied','sc-m','72','Jan 18','—','£62,000',''],
+              ].map(([role,co,stage,sc,scn,date,next,sal,flag])=>{
+                const stageCfg = {
+                  saved:        ['sp-saved','Saved'],
+                  cv:           ['sp-cv','CV gen.'],
+                  applied:      ['sp-applied','Applied'],
+                  acknowledged: ['sp-ack','Ack.'],
+                  interview:    ['sp-int','Interview'],
+                  offer:        ['sp-offer','Offer'],
+                }[stage]||['sp-saved',stage];
+                const stageColors = {
+                  'sp-saved':'rgba(255,255,255,0.06);color:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.1)',
+                  'sp-cv':'rgba(27,170,193,0.08);color:#7dd8e8;border:1px solid rgba(27,170,193,0.18)',
+                  'sp-applied':'rgba(27,170,193,0.1);color:#1BAAC1;border:1px solid rgba(27,170,193,0.25)',
+                  'sp-ack':'rgba(251,191,36,0.08);color:#fbbf24;border:1px solid rgba(251,191,36,0.2)',
+                  'sp-int':'rgba(251,191,36,0.14);color:#fbbf24;border:1px solid rgba(251,191,36,0.3)',
+                  'sp-offer':'rgba(74,222,128,0.12);color:#4ade80;border:1px solid rgba(74,222,128,0.25)',
+                }[stageCfg[0]]||'rgba(255,255,255,0.06);color:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.1)';
+                const scoreColor = sc==='sc-h'?'rgba(74,222,128,0.1);color:#4ade80':sc==='sc-m'?'rgba(251,191,36,0.1);color:#fbbf24':'rgba(255,107,107,0.1);color:#ff8080';
+                return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background=''">
+                  <td style="padding:7px 8px;font-size:10px;vertical-align:middle;">
+                    <div style="font-size:11px;font-weight:500;color:rgba(255,255,255,0.90);">${role}</div>
+                    <div style="font-size:10px;color:rgba(255,255,255,0.50);margin-top:1px;">${co}</div>
+                  </td>
+                  <td style="padding:7px 8px;vertical-align:middle;"><span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;padding:3px 8px;border-radius:20px;background:${stageColors};"><span style="width:4px;height:4px;border-radius:50%;background:currentColor;flex-shrink:0;"></span>${stageCfg[1]}</span></td>
+                  <td style="padding:7px 8px;vertical-align:middle;"><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;background:${scoreColor};">${scn}</span></td>
+                  <td style="padding:7px 8px;vertical-align:middle;font-size:10px;color:rgba(255,255,255,0.52);">${date}</td>
+                  <td style="padding:7px 8px;vertical-align:middle;font-size:10px;color:${flag?'rgba(251,191,36,1.0)':'rgba(255,255,255,0.52)'};">${next}</td>
+                  <td style="padding:7px 8px;vertical-align:middle;font-size:10px;color:rgba(255,255,255,0.52);">${sal}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+function sCVBuilder() {
+  return `<div class="af" style="width:100%;">${TOPBAR('CV builder')}
+  <div class="af-side-layout">${SIDEBAR(2)}<div class="af-main">
+    <div style="font-size:12px;font-weight:700;margin-bottom:3px;letter-spacing:-0.2px;">CV builder</div>
+    <div style="font-size:10px;color:rgba(255,255,255,0.52);margin-bottom:10px;">Paste a JD — Claude tailors your CV in seconds</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">
+      <div>
+        <div style="font-size:10px;font-weight:500;color:rgba(255,255,255,0.52);margin-bottom:5px;">Target job</div>
+        <div class="gc" style="margin-bottom:7px;display:flex;align-items:center;gap:7px;padding:8px 10px;">
+          <div style="width:22px;height:22px;border-radius:4px;background:#c41230;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;flex-shrink:0;">DE</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Senior Software Eng.</div>
+            <div style="font-size:10px;color:rgba(255,255,255,0.50);margin-top:1px;">Deliveroo · <span class="sh" style="font-size:9px;padding:1px 5px;">High · 91</span></div>
+          </div>
+          <div style="font-size:10px;color:#1BAAC1;cursor:pointer;font-weight:500;">Change</div>
+        </div>
+        <div style="font-size:10px;font-weight:500;color:rgba(255,255,255,0.52);margin-bottom:5px;">Job description</div>
+        <div class="gc" style="min-height:88px;font-size:10px;color:rgba(255,255,255,0.52);line-height:1.6;">
+          <div style="background:rgba(27,170,193,0.09);border:1px solid rgba(27,170,193,0.22);border-radius:3px;padding:4px 7px;font-size:10px;color:#1BAAC1;margin-bottom:6px;">● Claude found: React · Node.js · Kubernetes</div>
+          We're looking for a Senior Software Engineer to join our Core Platform team building services used by millions...
+        </div>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:500;color:rgba(255,255,255,0.52);margin-bottom:5px;">Your tailored CV</div>
+        <div class="gc" style="min-height:115px;font-size:10px;color:rgba(255,255,255,0.70);line-height:1.7;">
+          <div style="font-weight:700;font-size:11px;margin-bottom:3px;letter-spacing:-0.1px;">Ahsan Tapadar</div>
+          <div style="color:rgba(255,255,255,0.50);font-size:10px;margin-bottom:7px;">Senior Software Engineer · React · Node.js</div>
+          <div style="background:rgba(27,170,193,0.07);border-left:2px solid #1BAAC1;padding:5px 7px;font-size:10px;color:rgba(255,255,255,0.58);margin-bottom:6px;line-height:1.55;">Senior engineer with 6 years' experience in distributed systems. Led Kubernetes migration at Monzo, cutting infra cost by 34%.</div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.48);font-weight:600;">Lead Engineer · Monzo Bank · 2022 – Present</div>
+        </div>
+        <div style="display:flex;gap:5px;margin-top:7px;">
+          <div style="flex:1;background:#1BAAC1;color:#0a2828;padding:7px;text-align:center;font-size:10px;font-weight:700;cursor:pointer;border-radius:2px;">Download .docx</div>
+          <div style="border:1px solid rgba(255,255,255,0.16);border-radius:2px;padding:7px 10px;text-align:center;font-size:10px;color:rgba(255,255,255,0.55);cursor:pointer;">Drive</div>
+        </div>
+      </div>
+    </div>
+  </div></div></div>`;
+}
+
+function sAnalytics() {
+  const bars = [14,20,12,26,18,28,22,36];
+  // inline fill colors so bars are always visible regardless of CSS context
+  const barBg = 'rgba(27,170,193,0.20)';
+  const barHi = 'rgba(27,170,193,0.55)';
+  return `<div class="af" style="width:100%;">${TOPBAR('Analytics')}
+  <div class="af-side-layout">${SIDEBAR(3)}<div class="af-main">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;">
+      <div style="font-size:12px;font-weight:700;letter-spacing:-0.2px;">Your analytics</div>
+      <div style="font-size:10px;color:rgba(255,255,255,0.50);">Last 30 days</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:11px;">
+      ${[['24','↑ +8','Applications'],['38%','↑ +12%','Response rate'],['12d','↓ +3d','Avg. interview'],['1','Wise · £95k','Active offers']].map(([v,c,l])=>`
+      <div class="gc" style="padding:9px 10px;">
+        <div style="font-size:16px;font-weight:800;letter-spacing:-0.8px;">${v}</div>
+        <div style="font-size:10px;color:rgba(27,170,193,0.90);margin-top:2px;">${c}</div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.50);margin-top:2px;">${l}</div>
+      </div>`).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:8px;">
+      <div class="gc">
+        <div style="font-size:10px;font-weight:600;margin-bottom:8px;">Applications by week</div>
+        <div style="display:flex;align-items:flex-end;gap:5px;height:52px;">
+          ${bars.map((h,i)=>`<div style="flex:1;border-radius:2px 2px 0 0;height:${h*1.3}px;background:${i===7?barHi:barBg};"></div>`).join('')}
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+          ${['W1','W2','W3','W4','W5','W6','W7','W8'].map(w=>`<span style="font-size:10px;color:rgba(255,255,255,0.45);">${w}</span>`).join('')}
+        </div>
+      </div>
+      <div class="gc">
+        <div style="font-size:10px;font-weight:600;margin-bottom:8px;">Funnel</div>
+        ${[['Applied','24','100%'],['Acknowledged','13','54%'],['Interview','7','29%'],['Offer','3','13%']].map(([l,n,p])=>`
+        <div style="margin-bottom:7px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+            <span style="font-size:10px;color:rgba(255,255,255,0.58);">${l}</span>
+            <span style="font-size:10px;font-weight:700;">${n}</span>
+          </div>
+          <div style="height:2px;background:rgba(255,255,255,0.09);border-radius:1px;overflow:hidden;">
+            <div style="height:100%;width:${p};background:#1BAAC1;border-radius:1px;"></div>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div></div></div>`;
+}
+
+// ── SLIDES ─────────────────────────────────────────────────────────────────────
+const SLIDES = [
+  { type:'hero', h:`<div><div class="hero-eyebrow">UK visa sponsorship · verified</div><h1 class="hero-h1">Find jobs that will<br/><em>actually</em><br/>sponsor your visa.</h1><div class="hero-stats"><div class="stat-chip"><strong>120,000+</strong><span class="stat-chip-sep"></span>verified UK sponsors</div><div class="stat-chip"><strong>0</strong><span class="stat-chip-sep"></span>other boards do this</div></div></div>`, cta:'Browse sponsored jobs' },
+  { type:'hero', h:`<div><div class="hero-eyebrow">How it works</div><h1 class="hero-h1">Over <span class="ac">120,000</span> companies<br/>hold a UK sponsor<br/>licence. We know<br/>which ones <em>hire.</em></h1></div>`, cta:'See verified sponsors' },
+  { type:'split', label:'02 — Sign in', h2:'Sign in to your<br/><span class="ac">sponsorship tracker.</span>', body:'Glass card centred on canvas. Email, password, Google SSO — and a link to create a free account.', screen:sLogin, cta:'Create your free account' },
+  { type:'split', label:'03 — Onboarding', h2:'Upload your CV.<br/>Claude does<br/>the <em>rest.</em>', body:'A four-step wizard: visa type → CV upload → role suggestions → alert preferences. Claude reads your file and surfaces the roles most likely to hire you.', screen:sOnboarding, cta:'Get started free' },
+  { type:'split', label:'04 — Jobs feed', h2:'Every job from a<br/>verified <span class="ac">sponsor.</span>', body:'847 roles from licensed sponsors, scored by likelihood of sponsoring. Filter by score, salary, or remote. One-click CV generation on every listing.', screen:sJobs, cta:'Browse sponsored jobs' },
+  { type:'split', label:'05 — Tracker', h2:'Every application.<br/>Every <em>outcome.</em>', body:'Every application in one dashboard. Stage tabs, sponsorship scores, next-step reminders — filter by stage, search by company, see your response rate at a glance.', screen:sTracker, cta:'Start tracking' },
+  { type:'split', label:'06 — CV builder', h2:'One click.<br/>Tailored CV in<br/><span class="ac">seconds.</span>', body:'Paste a job description. Claude rewrites your CV to mirror its exact language — keywords matched, bullets adjusted, cover letter included.', screen:sCVBuilder, cta:'Try the CV builder' },
+  { type:'split', label:'07 — Analytics', h2:'Know which<br/>searches are<br/><em>converting.</em>', body:'Response rate, time to interview, weekly volume, funnel drop-off — everything you need to focus your effort on what actually works.', screen:sAnalytics, cta:'Browse sponsored jobs' },
+];
+
+// ── UTILITIES ────────────────────────────────────────────────────────────────
+function mapRange(val, inMin, inMax, outMin, outMax) {
+  return outMin + (outMax - outMin) * Math.max(0, Math.min(1, (val - inMin) / (inMax - inMin)));
+}
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function animateWords(el, baseDelay) {
+  let idx = 0;
+  function walk(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const parts = node.textContent.split(/(\s+)/);
+      const frag = document.createDocumentFragment();
+      parts.forEach(p => {
+        if (/^\s+$/.test(p) || p === '') { frag.appendChild(document.createTextNode(p)); }
+        else {
+          const s = document.createElement('span');
+          s.className = 'w';
+          s.style.animationDelay = (baseDelay + idx * 55) + 'ms';
+          s.textContent = p; idx++;
+          frag.appendChild(s);
+        }
+      });
+      node.parentNode.replaceChild(frag, node);
+    } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'BR') {
+      Array.from(node.childNodes).forEach(walk);
+    }
+  }
+  Array.from(el.childNodes).forEach(walk);
+}
+
+// ── ENGINE ──────────────────────────────────────────────────────────────────────
+const stage   = document.getElementById('stage');
+const ctaTxt  = document.getElementById('ctaText');
+const dotsEl  = document.getElementById('dots');
+const progBar = document.getElementById('progBar');
+const counter = document.getElementById('counter');
+let cur=0, raf=null, pStart=null;
+const DURATION = 7000;
+
+SLIDES.forEach((_,i) => {
+  const d = document.createElement('div');
+  d.className = 'dot'+(i===0?' on':'');
+  d.addEventListener('click', () => go(i, true));
+  dotsEl.appendChild(d);
+});
+
+function updateUI() {
+  dotsEl.querySelectorAll('.dot').forEach((d,i) => d.classList.toggle('on', i===cur));
+  counter.textContent = `${cur+1} / ${SLIDES.length}`;
+  ctaTxt.textContent = SLIDES[cur].cta || 'Browse sponsored jobs';
+}
+
+let transitioning = false;
+
+function buildSlide(idx) {
+  const s = SLIDES[idx];
+  const div = document.createElement('div');
+  div.className = 'slide-inner';
+  if (s.type === 'hero') {
+    div.innerHTML = s.h;
+  } else {
+    div.innerHTML = `<div class="split"><div class="split-copy"><div class="split-label">${s.label}</div><h2 class="split-h2">${s.h2}</h2><p class="split-body">${s.body}</p></div><div class="split-screen">${s.screen()}</div></div>`;
+  }
+  // Word-reveal the heading
+  const heading = div.querySelector('.hero-h1') || div.querySelector('.split-h2');
+  if (heading) animateWords(heading, 80);
+  // Fade-up body
+  const body = div.querySelector('.split-body');
+  if (body) { body.classList.add('body-reveal'); body.style.animationDelay = '240ms'; }
+  // Spring-in stat chips
+  div.querySelectorAll('.stat-chip').forEach((el, i) => {
+    el.classList.add('chip-reveal');
+    el.style.animationDelay = (200 + i * 70) + 'ms';
+  });
+  // Slide-in app frame
+  const frame = div.querySelector('.af');
+  if (frame) { frame.classList.add('frame-reveal'); frame.style.animationDelay = '100ms'; }
+  return div;
+}
+
+function render(idx) {
+  const old = stage.querySelector('.slide-inner');
+  if (!old) {
+    const div = buildSlide(idx);
+    stage.appendChild(div);
+    requestAnimationFrame(() => div.classList.add('visible'));
+    return;
+  }
+  if (transitioning) return;
+  transitioning = true;
+  old.classList.add('exit');
+  setTimeout(() => {
+    old.remove();
+    const div = buildSlide(idx);
+    stage.appendChild(div);
+    requestAnimationFrame(() => { div.classList.add('visible'); transitioning = false; });
+  }, 320);
+}
+
+function go(idx, user) {
+  if (transitioning) return;
+  cur = ((idx % SLIDES.length) + SLIDES.length) % SLIDES.length;
+  render(cur); updateUI();
+  if (user) { cancelAnimationFrame(raf); startProgress(); }
+}
+
+function startProgress() {
+  cancelAnimationFrame(raf);
+  progBar.style.width = '0%';
+  pStart = performance.now();
+  function tick(now) {
+    const pct = Math.min(((now - pStart) / DURATION) * 100, 100);
+    progBar.style.width = pct + '%';
+    if (pct < 100) { raf = requestAnimationFrame(tick); }
+    else { go(cur+1, false); setTimeout(startProgress, 500); }
+  }
+  raf = requestAnimationFrame(tick);
+}
+
+document.getElementById('nextBtn').addEventListener('click', () => go(cur+1, true));
+document.getElementById('prevBtn').addEventListener('click', () => go(cur-1, true));
+document.addEventListener('keydown', e => {
+  if (e.key==='ArrowRight'||e.key==='ArrowDown') go(cur+1, true);
+  if (e.key==='ArrowLeft' ||e.key==='ArrowUp')   go(cur-1, true);
+});
+let tx=0;
+document.addEventListener('touchstart', e => { tx=e.touches[0].clientX; }, {passive:true});
+document.addEventListener('touchend',   e => { const dx=e.changedTouches[0].clientX-tx; if(Math.abs(dx)>48) go(dx<0?cur+1:cur-1, true); });
+
+// ── INTERACTIVE GRID ──────────────────────────────────────────────────────────
+const CELL=72; let cells=[];
+function buildGrid() {
+  const g=document.getElementById('iGrid'); g.innerHTML=''; cells=[];
+  const cols=Math.ceil(window.innerWidth/CELL)+1, rows=Math.ceil(window.innerHeight/CELL)+1;
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++) {
+    const el=document.createElement('div'); el.className='grid-cell';
+    el.style.cssText=`left:${c*CELL}px;top:${r*CELL}px;width:${CELL}px;height:${CELL}px`;
+    g.appendChild(el); cells.push({el, cx:c*CELL+CELL/2, cy:r*CELL+CELL/2});
+  }
+}
+function light(x,y) {
+  const R=CELL*3.2;
+  cells.forEach(({el,cx,cy}) => {
+    const d=Math.sqrt((cx-x)**2+(cy-y)**2);
+    const t=mapRange(d,0,R,1,0);
+    if(t>0.01){ el.style.borderColor=`rgba(27,170,193,${(t*0.30).toFixed(3)})`; el.style.backgroundColor=`rgba(27,170,193,${(t*0.05).toFixed(3)})`; el.style.opacity=t.toFixed(3); }
+    else { el.style.borderColor='rgba(255,255,255,0)'; el.style.backgroundColor='transparent'; el.style.opacity='0'; }
+  });
+}
+// Lerp-smoothed cursor follow
+let mouseX=window.innerWidth/2, mouseY=window.innerHeight/2;
+let gridX=mouseX, gridY=mouseY;
+document.addEventListener('mousemove', e => { mouseX=e.clientX; mouseY=e.clientY; });
+document.addEventListener('touchmove', e => { mouseX=e.touches[0].clientX; mouseY=e.touches[0].clientY; }, {passive:true});
+setInterval(() => { if(window.innerWidth<=768){ mouseX=Math.random()*window.innerWidth; mouseY=Math.random()*window.innerHeight; }}, 1600);
+function gridLoop() {
+  gridX=lerp(gridX,mouseX,0.07); gridY=lerp(gridY,mouseY,0.07);
+  light(gridX,gridY);
+  requestAnimationFrame(gridLoop);
+}
+window.addEventListener('resize', buildGrid);
+buildGrid(); gridLoop();
+
+render(0); updateUI(); startProgress();
+</script>
+</body>
+</html>
