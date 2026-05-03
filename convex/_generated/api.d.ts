@@ -8,13 +8,23 @@
  * @module
  */
 
+import type * as lib_matchCompanyToSponsor from "../lib/matchCompanyToSponsor.js";
+import type * as lib_normaliseName from "../lib/normaliseName.js";
+import type * as lib_parseSponsorCsv from "../lib/parseSponsorCsv.js";
+import type * as lib_parseSponsorRow from "../lib/parseSponsorRow.js";
+
 import type {
   ApiFromModules,
   FilterApi,
   FunctionReference,
 } from "convex/server";
 
-declare const fullApi: ApiFromModules<{}>;
+declare const fullApi: ApiFromModules<{
+  "lib/matchCompanyToSponsor": typeof lib_matchCompanyToSponsor;
+  "lib/normaliseName": typeof lib_normaliseName;
+  "lib/parseSponsorCsv": typeof lib_parseSponsorCsv;
+  "lib/parseSponsorRow": typeof lib_parseSponsorRow;
+}>;
 
 /**
  * A utility for referencing Convex functions in your app's public API.
