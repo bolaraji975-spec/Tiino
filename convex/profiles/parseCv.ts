@@ -235,6 +235,11 @@ export const parseCv = action({
       },
     });
 
+    // Trigger role variation generation — non-fatal if it fails
+    await ctx.runAction(internal.profiles.generateRoleVariations.generateRoleVariations, {
+      userId,
+    });
+
     return { ok: true };
   },
 });

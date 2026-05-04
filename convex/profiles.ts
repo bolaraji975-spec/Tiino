@@ -52,6 +52,23 @@ export const _recordEvent = internalMutation({
 });
 
 // ---------------------------------------------------------------------------
+// _applyRoleVariations — internal: write generated role variation arrays
+// ---------------------------------------------------------------------------
+
+export const _applyRoleVariations = internalMutation({
+  args: {
+    profileId: v.id("profiles"),
+    roleVariations: v.object({
+      exact: v.array(v.string()),
+      adjacent: v.array(v.string()),
+    }),
+  },
+  handler: async (ctx, { profileId, roleVariations }) => {
+    await ctx.db.patch(profileId, { roleVariations, updatedAt: Date.now() });
+  },
+});
+
+// ---------------------------------------------------------------------------
 // _getProfileForUser — internal: load profile by userId (used by parseCv action)
 // ---------------------------------------------------------------------------
 
