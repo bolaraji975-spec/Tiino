@@ -9,6 +9,26 @@ import { mutation, query } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
 // ---------------------------------------------------------------------------
+// getCurrentProfile
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the authenticated user's profile row, or null if not found.
+ * Used by the roles onboarding page to seed roleVariations.
+ */
+export const getCurrentProfile = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return null;
+    return await ctx.db
+      .query("profiles")
+      .withIndex("byUser", (q) => q.eq("userId", userId))
+      .first();
+  },
+});
+
+// ---------------------------------------------------------------------------
 // getCurrentUser
 // ---------------------------------------------------------------------------
 
@@ -78,6 +98,41 @@ export const updateProfile = mutation({
       salaryMin: args.salaryMin,
       salaryMax: args.salaryMax,
       rightToWork: args.rightToWork,
+    });
+  },
+});
+
+// ---------------------------------------------------------------------------
+// updateRoleVariations
+// ---------------------------------------------------------------------------
+
+/**
+ * Persists the user-edited role variation arrays onto their profile.
+ * Called debounced from the roles onboarding editor.
+ */
+export const updateRoleVariations = mutation({
+  args: {
+    exact: v.array(v.string()),
+    adjacent: v.array(v.string()),
+  },
+  handler: async (ctx, { exact, adjacent }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError({ code: "UNAUTHORIZED", message: "Not authenticated." });
+    }
+
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("byUser", (q) => q.eq("userId", userId))
+      .first();
+
+    if (!profile) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "Profile not found." });
+    }
+
+    await ctx.db.patch(profile._id, {
+      roleVariations: { exact, adjacent },
+      updatedAt: Date.now(),
     });
   },
 });
