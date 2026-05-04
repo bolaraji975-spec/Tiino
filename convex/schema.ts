@@ -85,10 +85,11 @@ export default defineSchema({
     sourceIds: v.array(
       v.object({
         source: v.union(
-          v.literal("linkedin"),
-          v.literal("indeed"),
-          v.literal("glassdoor"),
+          v.literal("reed"),
           v.literal("adzuna"),
+          v.literal("nhs"),
+          v.literal("civil_service"),
+          v.literal("jobs_ac"),
         ),
         externalId: v.string(),
         applyUrl: v.string(),
@@ -120,6 +121,8 @@ export default defineSchema({
       }),
     ),
     sponsorId: v.optional(v.id("sponsors")),
+    // true when the JD explicitly mentions visa sponsorship available
+    explicit: v.optional(v.boolean()),
     isActive: v.boolean(),
     expiresAt: v.optional(v.number()),
   })
