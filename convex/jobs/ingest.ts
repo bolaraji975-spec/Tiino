@@ -27,6 +27,54 @@ import { normaliseName } from "../lib/normaliseName";
 
 const BATCH_SIZE = 50;
 
+// ---------------------------------------------------------------------------
+// Claude Haiku — extract essential criteria from public sector JDs
+// ---------------------------------------------------------------------------
+
+async function extractCriteria(description: string, apiKey: string): Promise<string[]> {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 500,
+      messages: [
+        {
+          role: "user",
+          content: `Extract the essential criteria or person specification requirements from this job description as a JSON array of strings. Return only the JSON array, nothing else.\n\n${description}`,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    // Non-fatal — log and return empty rather than failing the whole batch
+    console.error(`Claude Haiku criteria extraction failed: ${response.status}`);
+    return [];
+  }
+
+  const data = await response.json() as {
+    content: Array<{ type: string; text: string }>;
+  };
+  const text = data.content?.[0]?.text ?? "[]";
+
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return (parsed as unknown[])
+        .filter((item): item is string => typeof item === "string")
+        .slice(0, 20); // guard against runaway arrays
+    }
+  } catch {
+    // Malformed JSON — skip silently
+  }
+  return [];
+}
+
 export const ingestFromSource = action({
   args: {
     source: v.union(
@@ -68,7 +116,7 @@ export const ingestFromSource = action({
     }
 
     // --- 2. Normalise + detect signals ---
-    const payloads = rawJobs.map((raw) => {
+    const normalised = rawJobs.map((raw) => {
       const job = normaliseJob(raw);
       const signal = detectSponsorshipSignal(raw.description);
       const companyNorm = normaliseName(raw.company);
@@ -85,10 +133,23 @@ export const ingestFromSource = action({
         description: job.description,
         postedAt: job.postedAt,
         isAgency: job.isAgency,
+        isPublicSector: job.isPublicSector,
         signalExplicit: signal.explicit,
         signalNegative: signal.negative,
       };
     });
+
+    // --- 2b. Extract criteria for public sector jobs via Claude Haiku ---
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    const payloads = await Promise.all(
+      normalised.map(async (job) => {
+        if (!job.isPublicSector || !anthropicKey) {
+          return { ...job, extractedCriteria: undefined };
+        }
+        const criteria = await extractCriteria(job.description, anthropicKey);
+        return { ...job, extractedCriteria: criteria.length > 0 ? criteria : undefined };
+      }),
+    );
 
     // --- 3. Batch upsert via mutations ---
     let upserted = 0;

@@ -86,6 +86,8 @@ const jobInputValidator = v.object({
   description: v.string(),
   postedAt: v.number(),
   isAgency: v.boolean(),
+  isPublicSector: v.boolean(),
+  extractedCriteria: v.optional(v.array(v.string())),
   signalExplicit: v.boolean(),
   signalNegative: v.boolean(),
 });
@@ -201,6 +203,8 @@ export const _upsertBatch = internalMutation({
         description: job.description,
         postedAt: job.postedAt,
         isAgency: job.isAgency,
+        isPublicSector: job.isPublicSector,
+        ...(job.extractedCriteria !== undefined ? { extractedCriteria: job.extractedCriteria } : {}),
         sponsorshipScore: score,
         sponsorshipBand: band,
         scoreBreakdown,

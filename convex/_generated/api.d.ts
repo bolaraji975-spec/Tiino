@@ -20,6 +20,7 @@ import type * as jobs_sources_nhs from "../jobs/sources/nhs.js";
 import type * as jobs_sources_reed from "../jobs/sources/reed.js";
 import type * as jobs_types from "../jobs/types.js";
 import type * as lib_alerts from "../lib/alerts.js";
+import type * as lib_companyLogo from "../lib/companyLogo.js";
 import type * as lib_detectSponsorshipSignal from "../lib/detectSponsorshipSignal.js";
 import type * as lib_matchCompanyToSponsor from "../lib/matchCompanyToSponsor.js";
 import type * as lib_normaliseJob from "../lib/normaliseJob.js";
@@ -51,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   "jobs/sources/reed": typeof jobs_sources_reed;
   "jobs/types": typeof jobs_types;
   "lib/alerts": typeof lib_alerts;
+  "lib/companyLogo": typeof lib_companyLogo;
   "lib/detectSponsorshipSignal": typeof lib_detectSponsorshipSignal;
   "lib/matchCompanyToSponsor": typeof lib_matchCompanyToSponsor;
   "lib/normaliseJob": typeof lib_normaliseJob;

@@ -123,6 +123,11 @@ export default defineSchema({
     sponsorId: v.optional(v.id("sponsors")),
     // true when the JD explicitly mentions visa sponsorship available
     explicit: v.optional(v.boolean()),
+    // true for public-sector sources (nhs, civil_service, jobs_ac)
+    isPublicSector: v.boolean(),
+    // essential/desirable criteria extracted by Claude Haiku at ingest time
+    // only populated for public-sector jobs
+    extractedCriteria: v.optional(v.array(v.string())),
     isActive: v.boolean(),
     expiresAt: v.optional(v.number()),
   })

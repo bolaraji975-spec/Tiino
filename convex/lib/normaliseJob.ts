@@ -14,8 +14,10 @@
  */
 
 import { createHash } from "crypto";
-import type { RawJob, CanonicalJob } from "../jobs/types";
+import type { RawJob, CanonicalJob, JobSource } from "../jobs/types";
 import { normaliseName } from "./normaliseName";
+
+const PUBLIC_SECTOR_SOURCES: JobSource[] = ["nhs", "civil_service", "jobs_ac"];
 
 // ---------------------------------------------------------------------------
 // Salary normalisation
@@ -144,5 +146,6 @@ export function normaliseJob(raw: RawJob): CanonicalJob {
     description: raw.description,
     postedAt: raw.postedAt,
     isAgency,
+    isPublicSector: PUBLIC_SECTOR_SOURCES.includes(raw.source),
   };
 }

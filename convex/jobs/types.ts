@@ -41,4 +41,5 @@ export type CanonicalJob = {
   description: string;
   postedAt: number;
   isAgency: boolean;
+  isPublicSector: boolean;
 };
