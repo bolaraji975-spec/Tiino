@@ -19,6 +19,7 @@ import type * as lib_parseSponsorRow from "../lib/parseSponsorRow.js";
 import type * as sponsors_refresh from "../sponsors/refresh.js";
 import type * as sponsors_seedTradingNames from "../sponsors/seedTradingNames.js";
 import type * as sponsors_tradingNames from "../sponsors/tradingNames.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   "sponsors/refresh": typeof sponsors_refresh;
   "sponsors/seedTradingNames": typeof sponsors_seedTradingNames;
   "sponsors/tradingNames": typeof sponsors_tradingNames;
+  users: typeof users;
 }>;
 
 /**
