@@ -1,31 +1,55 @@
 import { defineSchema, defineTable } from "convex/server";
+import { authTables } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  // Spread auth auxiliary tables (authSessions, authAccounts, authRefreshTokens,
+  // authVerificationCodes, authVerifiers, authRateLimits). We override `users`
+  // below to add our app-specific fields.
+  ...authTables,
+
+  // Override the users table: merge Convex Auth's required fields with our own.
+  // email is optional per Convex Auth's convention (supports OAuth providers
+  // that may not supply an email). For magic-link-only sign-in it is always set.
   users: defineTable({
-    email: v.string(),
+    // ── Convex Auth fields ──────────────────────────────────────────────────
     name: v.optional(v.string()),
-    visaStatus: v.union(
-      v.literal("graduate"),
-      v.literal("skilled_worker"),
-      v.literal("student"),
-      v.literal("other"),
+    image: v.optional(v.string()),
+    email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+
+    // ── App fields ──────────────────────────────────────────────────────────
+    // visaStatus is set during onboarding, not at sign-up time
+    visaStatus: v.optional(
+      v.union(
+        v.literal("graduate"),
+        v.literal("skilled_worker"),
+        v.literal("student"),
+        v.literal("other"),
+      ),
     ),
     location: v.optional(v.string()),
     salaryMin: v.optional(v.number()),
     salaryMax: v.optional(v.number()),
     rightToWork: v.optional(v.boolean()),
+
+    // Set to "free" on first login via createOrUpdateUser callback
     plan: v.union(
       v.literal("free"),
       v.literal("pro_monthly"),
       v.literal("pro_annual"),
     ),
     stripeCustomerId: v.optional(v.string()),
+    // Set to 0 on first login via createOrUpdateUser callback
     payPerCvCredits: v.number(),
     createdAt: v.number(),
     deletedAt: v.optional(v.number()),
   })
-    .index("byEmail", ["email"])
+    // "email" index name is required by @convex-dev/auth
+    .index("email", ["email"])
     .index("byStripeCustomer", ["stripeCustomerId"]),
 
   profiles: defineTable({

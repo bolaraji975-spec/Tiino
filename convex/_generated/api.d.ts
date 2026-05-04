@@ -8,7 +8,9 @@
  * @module
  */
 
+import type * as auth from "../auth.js";
 import type * as crons from "../crons.js";
+import type * as http from "../http.js";
 import type * as lib_alerts from "../lib/alerts.js";
 import type * as lib_matchCompanyToSponsor from "../lib/matchCompanyToSponsor.js";
 import type * as lib_normaliseName from "../lib/normaliseName.js";
@@ -25,7 +27,9 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  auth: typeof auth;
   crons: typeof crons;
+  http: typeof http;
   "lib/alerts": typeof lib_alerts;
   "lib/matchCompanyToSponsor": typeof lib_matchCompanyToSponsor;
   "lib/normaliseName": typeof lib_normaliseName;
