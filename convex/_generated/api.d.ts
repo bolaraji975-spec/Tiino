@@ -16,6 +16,7 @@ import type * as lib_matchCompanyToSponsor from "../lib/matchCompanyToSponsor.js
 import type * as lib_normaliseName from "../lib/normaliseName.js";
 import type * as lib_parseSponsorCsv from "../lib/parseSponsorCsv.js";
 import type * as lib_parseSponsorRow from "../lib/parseSponsorRow.js";
+import type * as profiles from "../profiles.js";
 import type * as sponsors_refresh from "../sponsors/refresh.js";
 import type * as sponsors_seedTradingNames from "../sponsors/seedTradingNames.js";
 import type * as sponsors_tradingNames from "../sponsors/tradingNames.js";
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   "lib/normaliseName": typeof lib_normaliseName;
   "lib/parseSponsorCsv": typeof lib_parseSponsorCsv;
   "lib/parseSponsorRow": typeof lib_parseSponsorRow;
+  profiles: typeof profiles;
   "sponsors/refresh": typeof sponsors_refresh;
   "sponsors/seedTradingNames": typeof sponsors_seedTradingNames;
   "sponsors/tradingNames": typeof sponsors_tradingNames;
