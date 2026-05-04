@@ -1,0 +1,52 @@
+%PDF-1.4
+1 0 obj
+<</Type /Catalog /Pages 2 0 R>>
+endobj
+2 0 obj
+<</Type /Pages /Kids [3 0 R] /Count 1>>
+endobj
+3 0 obj
+<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources <</Font <</F1 5 0 R>>>>>>
+endobj
+4 0 obj
+<</Length 1130>>
+stream
+BT
+/F1 14 Tf
+50 750 Td (Amara Osei) Tj
+0 -20 Td /F1 11 Tf (Software Engineer) Tj
+0 -30 Td (amara.osei@email.com | London, UK | linkedin.com/in/amaraosei) Tj
+0 -30 Td /F1 13 Tf (EXPERIENCE) Tj
+0 -20 Td /F1 11 Tf (Senior Software Engineer - FinTech Solutions Ltd, London  2021-Present) Tj
+0 -18 Td (- Led migration of monolithic payments platform to microservices  ) Tj
+0 -18 Td (- Reduced API latency by 40% through caching strategy) Tj
+0 -18 Td (- Mentored team of 4 junior engineers) Tj
+0 -20 Td (Software Engineer - Digital Agency Co, London  2018-2021) Tj
+0 -18 Td (- Built React/Node.js web applications for 10+ enterprise clients) Tj
+0 -18 Td (- Implemented CI/CD pipelines cutting deployment time by 60%) Tj
+0 -30 Td /F1 13 Tf (EDUCATION) Tj
+0 -20 Td /F1 11 Tf (BSc Computer Science - University of Birmingham  2014-2018) Tj
+0 -30 Td /F1 13 Tf (SKILLS) Tj
+0 -20 Td /F1 11 Tf (Python, TypeScript, React, Node.js, PostgreSQL, Redis, Docker, Kubernetes) Tj
+0 -18 Td (AWS, GCP, Terraform, CI/CD, Agile/Scrum) Tj
+0 -30 Td /F1 13 Tf (LANGUAGES) Tj
+0 -20 Td /F1 11 Tf (English (Native), Twi (Fluent), French (Conversational)) Tj
+ET
+endstream
+endobj
+5 0 obj
+<</Type /Font /Subtype /Type1 /BaseFont /Helvetica>>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000056 00000 n 
+0000000111 00000 n 
+0000000231 00000 n 
+0000001411 00000 n 
+trailer
+<</Size 6 /Root 1 0 R>>
+startxref
+1479
+%%EOF

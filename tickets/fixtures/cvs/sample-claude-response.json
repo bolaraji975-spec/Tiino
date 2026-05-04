@@ -1,0 +1,28 @@
+{
+  "currentRoleTitle": "Senior Software Engineer",
+  "yearsExperience": 7,
+  "skills": [
+    "Python",
+    "TypeScript",
+    "React",
+    "Node.js",
+    "PostgreSQL",
+    "Redis",
+    "Docker",
+    "Kubernetes",
+    "AWS",
+    "GCP",
+    "Terraform",
+    "CI/CD",
+    "Agile/Scrum"
+  ],
+  "qualifications": [
+    "BSc Computer Science - University of Birmingham (2018)"
+  ],
+  "industrySector": "Financial Technology",
+  "languages": [
+    "English",
+    "Twi",
+    "French"
+  ]
+}

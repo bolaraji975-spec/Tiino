@@ -5,7 +5,7 @@
  */
 
 import { ConvexError, v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { mutation, internalMutation, internalQuery } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
 const MAX_CV_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -14,6 +14,56 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
+
+// ---------------------------------------------------------------------------
+// _applyParsedCv — internal: write Claude-extracted fields onto a profile
+// ---------------------------------------------------------------------------
+
+export const _applyParsedCv = internalMutation({
+  args: {
+    profileId: v.id("profiles"),
+    data: v.object({
+      currentRoleTitle: v.optional(v.string()),
+      yearsExperience: v.optional(v.number()),
+      skills: v.array(v.string()),
+      qualifications: v.array(v.string()),
+      industrySector: v.optional(v.string()),
+      languages: v.array(v.string()),
+    }),
+  },
+  handler: async (ctx, { profileId, data }) => {
+    await ctx.db.patch(profileId, { ...data, updatedAt: Date.now() });
+  },
+});
+
+// ---------------------------------------------------------------------------
+// _recordEvent — internal: insert into the events audit log
+// ---------------------------------------------------------------------------
+
+export const _recordEvent = internalMutation({
+  args: {
+    userId: v.id("users"),
+    type: v.string(),
+    payload: v.any(),
+  },
+  handler: async (ctx, { userId, type, payload }) => {
+    await ctx.db.insert("events", { userId, type, payload, at: Date.now() });
+  },
+});
+
+// ---------------------------------------------------------------------------
+// _getProfileForUser — internal: load profile by userId (used by parseCv action)
+// ---------------------------------------------------------------------------
+
+export const _getProfileForUser = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    return await ctx.db
+      .query("profiles")
+      .withIndex("byUser", (q) => q.eq("userId", userId))
+      .first();
+  },
+});
 
 // ---------------------------------------------------------------------------
 // generateUploadUrl
