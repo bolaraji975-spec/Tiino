@@ -3,34 +3,41 @@
  *
  * Convex Auth configuration for Tino.
  *
- * Provider: Email magic link, delivered via Resend.
+ * Providers:
+ *   1. Email magic link — delivered via Resend
+ *   2. Google OAuth     — requires GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET
  *
- * Flow:
- *   1. User submits email → signIn("email", { email }) is called
- *   2. sendVerificationRequest fires and POSTs to Resend with the magic link URL
- *   3. User clicks the link → URL contains ?code=<token>
+ * Magic-link flow:
+ *   1. User submits email → signIn("email", { email })
+ *   2. sendVerificationRequest POSTs to Resend with the magic link URL
+ *   3. User clicks link → URL contains ?code=<token>
  *   4. Frontend calls signIn("email", { code }) → user is authenticated
  *
- * On first sign-in, createOrUpdateUser inserts a users row with
- * plan="free" and payPerCvCredits=0 as required by the DOD.
+ * Google OAuth flow:
+ *   1. Frontend calls signIn("google") → redirected to Google consent screen
+ *   2. Google redirects to CONVEX_SITE_URL/api/auth/callback/google
+ *   3. Convex Auth exchanges the code, calls createOrUpdateUser
+ *
+ * On first sign-in (either provider), createOrUpdateUser inserts a users row
+ * with plan="free" and payPerCvCredits=0.
  *
  * Required Convex env vars (npx convex env set):
  *   RESEND_API_KEY
  *   EMAIL_FROM_TRANSACTIONAL   e.g. hello@tiino.app
+ *   GOOGLE_CLIENT_ID
+ *   GOOGLE_CLIENT_SECRET
  *   CONVEX_SITE_URL            set automatically on deploy; set manually for local dev
  */
 
 import { convexAuth } from "@convex-dev/auth/server";
 import { Email } from "@convex-dev/auth/providers/Email";
+import Google from "@auth/core/providers/google";
 
 // ---------------------------------------------------------------------------
 // Magic link email sender (Resend)
 // ---------------------------------------------------------------------------
 
-async function sendMagicLinkEmail(
-  to: string,
-  url: string,
-): Promise<void> {
+async function sendMagicLinkEmail(to: string, url: string): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     // During local development without a key, log the link so devs can test
@@ -38,8 +45,7 @@ async function sendMagicLinkEmail(
     return;
   }
 
-  const from =
-    process.env.EMAIL_FROM_TRANSACTIONAL ?? "hello@tiino.app";
+  const from = process.env.EMAIL_FROM_TRANSACTIONAL ?? "hello@tiino.app";
 
   const body = JSON.stringify({
     from,
@@ -86,10 +92,8 @@ async function sendMagicLinkEmail(
 // ---------------------------------------------------------------------------
 
 const ResendMagicLink = Email({
-  // Setting authorize to undefined enables true magic-link behaviour:
-  // the token alone is sufficient; the email address is not re-checked
-  // on verification. This lets the ?code= link work without carrying
-  // the original email address in the URL.
+  // authorize: undefined enables true magic-link behaviour — the token alone
+  // is sufficient; the email address is not re-checked on verification.
   authorize: undefined,
   sendVerificationRequest: async ({ identifier: email, url }) => {
     await sendMagicLinkEmail(email, url);
@@ -97,29 +101,47 @@ const ResendMagicLink = Email({
 });
 
 // ---------------------------------------------------------------------------
+// Google OAuth provider
+// ---------------------------------------------------------------------------
+
+const GoogleOAuth = Google({
+  clientId: process.env.GOOGLE_CLIENT_ID,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+});
+
+// ---------------------------------------------------------------------------
 // convexAuth export
 // ---------------------------------------------------------------------------
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-  providers: [ResendMagicLink],
+  providers: [ResendMagicLink, GoogleOAuth],
   callbacks: {
     /**
-     * Called every time a user authenticates.
-     * On first sign-in: creates the users row with defaults.
-     * On subsequent sign-ins: returns the existing user ID unchanged.
+     * Called on every sign-in (both providers).
+     * New user: inserts a users row with required defaults.
+     * Returning user: returns the existing ID unchanged.
+     *
+     * Google profile fields available via args.profile:
+     *   email, name, picture (mapped to image by Auth.js)
      */
     async createOrUpdateUser(ctx, args) {
       if (args.existingUserId !== null) {
-        // Returning user — nothing to update for now
         return args.existingUserId;
       }
 
-      // New user — insert with required defaults
+      const profile = args.profile;
+
       return await ctx.db.insert("users", {
         email:
-          typeof args.profile.email === "string"
-            ? args.profile.email
-            : undefined,
+          typeof profile.email === "string" ? profile.email : undefined,
+        name:
+          typeof profile.name === "string" ? profile.name : undefined,
+        image:
+          typeof profile.image === "string"
+            ? profile.image
+            : typeof (profile as Record<string, unknown>).picture === "string"
+              ? (profile as Record<string, unknown>).picture as string
+              : undefined,
         plan: "free",
         payPerCvCredits: 0,
         createdAt: Date.now(),
