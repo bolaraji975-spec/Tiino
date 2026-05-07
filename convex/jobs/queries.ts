@@ -7,25 +7,54 @@ import { query } from "../_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { matchesRoleVariation } from "../lib/matchRoleVariation";
 
-const PAGE_SIZE = 20;
+// Max jobs returned in one call — guards against accidental very large limits.
+const HARD_LIMIT = 100;
 
 // ---------------------------------------------------------------------------
 // listForUser
 // ---------------------------------------------------------------------------
 
 /**
- * Returns a page of active jobs filtered by the user's role variations
- * (exact + adjacent titles from their profile), ranked by sponsorshipScore
- * descending then postedAt descending.
+ * Returns up to `limit` active jobs (default 20, max 100) filtered by:
+ *   1. The user's role variations (exact + adjacent) from their profile
+ *   2. Optional caller-supplied filters (all combined with AND):
+ *      - band        : sponsorship band ("high" | "medium" | "low" | "very_low")
+ *                      When omitted, "very_low" jobs are hidden by default.
+ *      - location    : case-insensitive substring match on job.location
+ *      - salaryMin   : job.salaryMin must be >= this value (jobs with no salary are included)
+ *      - postedWithin: recency cutoff ("24h" | "7d" | "30d")
+ *      - source      : "nhs" | "civil_service" | "jobs_ac" | "private"
+ *                      "private" means isPublicSector === false
  *
- * When the user has no profile yet every active job is returned (unfiltered).
+ * Results are ranked: sponsorshipScore desc → postedAt desc.
  *
  * Scalability note: collect() loads all active jobs into memory before
- * filtering/sorting. Acceptable for MVP; replace with a search index at scale.
+ * filtering/sorting. Replace with a search index at scale.
  */
 export const listForUser = query({
   args: {
-    page: v.optional(v.number()),
+    limit: v.optional(v.number()),
+    band: v.optional(
+      v.union(
+        v.literal("high"),
+        v.literal("medium"),
+        v.literal("low"),
+        v.literal("very_low"),
+      ),
+    ),
+    location: v.optional(v.string()),
+    salaryMin: v.optional(v.number()),
+    postedWithin: v.optional(
+      v.union(v.literal("24h"), v.literal("7d"), v.literal("30d")),
+    ),
+    source: v.optional(
+      v.union(
+        v.literal("nhs"),
+        v.literal("civil_service"),
+        v.literal("jobs_ac"),
+        v.literal("private"),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -60,10 +89,62 @@ export const listForUser = query({
       .withIndex("byActive", (q) => q.eq("isActive", true))
       .collect();
 
-    const filtered = allActive.filter((j) =>
+    // ── 1. Role variation filter ───────────────────────────────────────────
+    let filtered = allActive.filter((j) =>
       matchesRoleVariation(j.title, variations),
     );
 
+    // ── 2. Band filter ────────────────────────────────────────────────────
+    if (args.band) {
+      filtered = filtered.filter((j) => j.sponsorshipBand === args.band);
+    } else {
+      // Default: hide very_low
+      filtered = filtered.filter((j) => j.sponsorshipBand !== "very_low");
+    }
+
+    // ── 3. Location filter (case-insensitive substring) ───────────────────
+    if (args.location) {
+      const loc = args.location.toLowerCase().trim();
+      if (loc) {
+        filtered = filtered.filter((j) =>
+          j.location.toLowerCase().includes(loc),
+        );
+      }
+    }
+
+    // ── 4. Salary filter ──────────────────────────────────────────────────
+    // Jobs with no salary listed are included (unknown ≠ below threshold).
+    if (args.salaryMin !== undefined && args.salaryMin > 0) {
+      const threshold = args.salaryMin;
+      filtered = filtered.filter(
+        (j) => j.salaryMin === undefined || j.salaryMin >= threshold,
+      );
+    }
+
+    // ── 5. Posted-within filter ───────────────────────────────────────────
+    if (args.postedWithin) {
+      const ms = {
+        "24h": 86_400_000,
+        "7d": 604_800_000,
+        "30d": 2_592_000_000,
+      }[args.postedWithin];
+      const cutoff = Date.now() - ms;
+      filtered = filtered.filter((j) => j.postedAt >= cutoff);
+    }
+
+    // ── 6. Source filter ──────────────────────────────────────────────────
+    if (args.source) {
+      if (args.source === "private") {
+        filtered = filtered.filter((j) => !j.isPublicSector);
+      } else {
+        const src = args.source;
+        filtered = filtered.filter((j) =>
+          j.sourceIds.some((s) => s.source === src),
+        );
+      }
+    }
+
+    // ── Sort: score desc → postedAt desc ─────────────────────────────────
     filtered.sort((a, b) => {
       if (b.sponsorshipScore !== a.sponsorshipScore) {
         return b.sponsorshipScore - a.sponsorshipScore;
@@ -71,13 +152,12 @@ export const listForUser = query({
       return b.postedAt - a.postedAt;
     });
 
-    const page = args.page ?? 0;
-    const start = page * PAGE_SIZE;
+    const limit = Math.min(args.limit ?? 20, HARD_LIMIT);
 
     return {
-      jobs: filtered.slice(start, start + PAGE_SIZE),
+      jobs: filtered.slice(0, limit),
       totalCount: filtered.length,
-      hasMore: start + PAGE_SIZE < filtered.length,
+      hasMore: limit < filtered.length,
       isPro,
     };
   },
