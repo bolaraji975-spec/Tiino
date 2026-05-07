@@ -7,6 +7,52 @@ import { query } from "../_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { matchesRoleVariation } from "../lib/matchRoleVariation";
 
+// ---------------------------------------------------------------------------
+// getJobById
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns a single job by its Convex ID, enriched with:
+ *   - sponsor record (if the job is linked to a UKVI sponsor)
+ *   - isSaved: whether the current user has a "saved" application for this job
+ *   - isPro: whether the current user is on a paid plan
+ *
+ * Returns null if the job is not found, inactive, or the user is not signed in.
+ */
+export const getJobById = query({
+  args: { id: v.id("jobs") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+
+    const user = await ctx.db.get(userId);
+    if (!user) return null;
+
+    const job = await ctx.db.get(args.id);
+    if (!job || !job.isActive) return null;
+
+    const isPro = user.plan === "pro_monthly" || user.plan === "pro_annual";
+
+    // Fetch linked sponsor record (may be null if no match was found at ingest)
+    const sponsor = job.sponsorId ? await ctx.db.get(job.sponsorId) : null;
+
+    // Check saved status
+    const application = await ctx.db
+      .query("applications")
+      .withIndex("byJob", (q) => q.eq("jobId", job._id))
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .first();
+
+    return {
+      job,
+      sponsor,
+      isPro,
+      isSaved: application?.stage === "saved",
+      applicationId: application?._id,
+    };
+  },
+});
+
 // Max jobs returned in one call — guards against accidental very large limits.
 const HARD_LIMIT = 100;
 
