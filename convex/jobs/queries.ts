@@ -8,6 +8,31 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { matchesRoleVariation } from "../lib/matchRoleVariation";
 
 // ---------------------------------------------------------------------------
+// getSavedJobIds
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the IDs of all jobs the current user has saved (stage = "saved").
+ * Used by the feed to render per-card save toggles without a per-card query.
+ * Returns an empty array if the user is not signed in.
+ */
+export const getSavedJobIds = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+
+    const applications = await ctx.db
+      .query("applications")
+      .withIndex("byUser", (q) => q.eq("userId", userId))
+      .filter((q) => q.eq(q.field("stage"), "saved"))
+      .collect();
+
+    return applications.map((a) => a.jobId);
+  },
+});
+
+// ---------------------------------------------------------------------------
 // getJobById
 // ---------------------------------------------------------------------------
 

@@ -16,10 +16,11 @@
  *   Scrollable card list + Load more
  */
 
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { CompanyLogo } from "@/components/CompanyLogo";
 import { ScoreBand } from "@/components/ScoreBand";
 import type { Band } from "@/components/ScoreBand";
@@ -137,15 +138,62 @@ function IconChevron() {
 }
 
 // ---------------------------------------------------------------------------
+// Save button (shared atom)
+// ---------------------------------------------------------------------------
+
+interface SaveButtonProps {
+  isSaved: boolean;
+  onSave: () => void;
+  onUnsave: () => void;
+}
+
+function SaveButton({ isSaved, onSave, onUnsave }: SaveButtonProps) {
+  return (
+    <button
+      onClick={isSaved ? onUnsave : onSave}
+      title={isSaved ? "Remove from saved" : "Save job"}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 28,
+        height: 28,
+        borderRadius: 0,
+        border: `1px solid ${isSaved ? "rgba(74,222,128,0.30)" : "rgba(255,255,255,0.12)"}`,
+        background: isSaved ? "rgba(74,222,128,0.08)" : "transparent",
+        cursor: "pointer",
+        flexShrink: 0,
+        transition: "border-color 0.12s, background 0.12s",
+        padding: 0,
+      }}
+      aria-label={isSaved ? "Unsave job" : "Save job"}
+    >
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+        <path
+          d="M2 2h9v10l-4.5-2.5L2 12V2z"
+          stroke={isSaved ? "#4ade80" : "rgba(255,255,255,0.40)"}
+          strokeWidth="1.3"
+          strokeLinejoin="round"
+          fill={isSaved ? "rgba(74,222,128,0.20)" : "none"}
+        />
+      </svg>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Job card
 // ---------------------------------------------------------------------------
 
 interface JobCardProps {
   job: JobDoc;
   isPro: boolean;
+  isSaved: boolean;
+  onSave: () => void;
+  onUnsave: () => void;
 }
 
-function JobCard({ job, isPro }: JobCardProps) {
+function JobCard({ job, isPro, isSaved, onSave, onUnsave }: JobCardProps) {
   const applyUrl = job.sourceIds[0]?.applyUrl ?? "#";
   const salary = formatSalary(job.salaryMin, job.salaryMax);
   const age = relativeTime(job.postedAt);
@@ -198,6 +246,7 @@ function JobCard({ job, isPro }: JobCardProps) {
       </div>
 
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+        <SaveButton isSaved={isSaved} onSave={onSave} onUnsave={onUnsave} />
         <a
           href={applyUrl}
           target="_blank"
@@ -280,6 +329,9 @@ function JobsFeed() {
     salaryMin !== undefined ? String(salaryMin) : "",
   );
 
+  // ── Upgrade prompt (shown when free save limit hit) ──────────────────────
+  const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+
   // ── Limit — reset whenever any filter changes ────────────────────────────
   const [limit, setLimit] = useState(20);
   const filterKey = [band, location, salaryMin, postedWithin, source].join("|");
@@ -291,7 +343,7 @@ function JobsFeed() {
     setLimit(20);
   }, [filterKey]);
 
-  // ── Convex query ─────────────────────────────────────────────────────────
+  // ── Convex queries ───────────────────────────────────────────────────────
   const result = useQuery(api.jobs.queries.listForUser, {
     limit,
     band: band ?? undefined,
@@ -300,6 +352,51 @@ function JobsFeed() {
     postedWithin: postedWithin ?? undefined,
     source: source ?? undefined,
   });
+
+  const savedJobIds = useQuery(api.jobs.queries.getSavedJobIds, {});
+  const savedSet = new Set<string>(savedJobIds ?? []);
+
+  // ── Mutations with optimistic updates ───────────────────────────────────
+  const saveJobMutation = useMutation(api.applications.mutations.saveJob)
+    .withOptimisticUpdate((localStore, args) => {
+      const current = localStore.getQuery(api.jobs.queries.getSavedJobIds, {});
+      if (current !== undefined) {
+        localStore.setQuery(api.jobs.queries.getSavedJobIds, {}, [
+          ...current,
+          args.jobId,
+        ]);
+      }
+    });
+
+  const unsaveJobMutation = useMutation(api.applications.mutations.unsaveJob)
+    .withOptimisticUpdate((localStore, args) => {
+      const current = localStore.getQuery(api.jobs.queries.getSavedJobIds, {});
+      if (current !== undefined) {
+        localStore.setQuery(
+          api.jobs.queries.getSavedJobIds,
+          {},
+          current.filter((id) => id !== args.jobId),
+        );
+      }
+    });
+
+  async function handleSave(jobId: string) {
+    try {
+      await saveJobMutation({ jobId: jobId as Id<"jobs"> });
+    } catch (err: unknown) {
+      const code =
+        err instanceof Error
+          ? (err as { data?: { code?: string } }).data?.code
+          : null;
+      if (code === "UPGRADE_REQUIRED") {
+        setShowUpgradePrompt(true);
+      }
+    }
+  }
+
+  async function handleUnsave(jobId: string) {
+    await unsaveJobMutation({ jobId: jobId as Id<"jobs"> });
+  }
 
   const isPro: boolean = result?.isPro ?? false;
   const isLoading = result === undefined;
@@ -572,6 +669,65 @@ function JobsFeed() {
 
       {/* ── Job list ──────────────────────────────────────────────────── */}
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 24px 24px" }}>
+
+        {/* Upgrade prompt — shown when free save limit is hit */}
+        {showUpgradePrompt && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              background: "rgba(27,170,193,0.08)",
+              border: "1px solid rgba(27,170,193,0.25)",
+              borderRadius: 8,
+              padding: "10px 14px",
+              marginBottom: 12,
+            }}
+          >
+            <div>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>
+                Save limit reached
+              </span>
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.50)", marginLeft: 8 }}>
+                Free plan allows 3 saved jobs.
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <a
+                href="/pricing"
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: "5px 10px",
+                  borderRadius: 0,
+                  background: "#1BAAC1",
+                  color: "#0a2828",
+                  textDecoration: "none",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Upgrade to Pro
+              </a>
+              <button
+                onClick={() => setShowUpgradePrompt(false)}
+                aria-label="Dismiss"
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "rgba(255,255,255,0.35)",
+                  fontSize: 16,
+                  lineHeight: 1,
+                  padding: 0,
+                }}
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+
         {isLoading && (
           <div
             style={{
@@ -602,7 +758,14 @@ function JobsFeed() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {jobs.map((job) => (
-            <JobCard key={job._id} job={job} isPro={isPro} />
+            <JobCard
+              key={job._id}
+              job={job}
+              isPro={isPro}
+              isSaved={savedSet.has(job._id)}
+              onSave={() => handleSave(job._id)}
+              onUnsave={() => handleUnsave(job._id)}
+            />
           ))}
         </div>
 

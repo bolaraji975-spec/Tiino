@@ -17,10 +17,9 @@
  *                        │    UKVI status, rating, route
  */
 
-import { use } from "react";
+import { use, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { CompanyLogo } from "@/components/CompanyLogo";
@@ -204,21 +203,46 @@ interface JobDetailInnerProps {
 
 function JobDetailInner({ id }: JobDetailInnerProps) {
   const router = useRouter();
-  const [saving, setSaving] = useState(false);
+  const [pendingSave, setPendingSave] = useState(false);
+  const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
 
   const result = useQuery(api.jobs.queries.getJobById, {
     id: id as Id<"jobs">,
   });
 
   const saveJobMutation = useMutation(api.applications.mutations.saveJob);
+  const unsaveJobMutation = useMutation(api.applications.mutations.unsaveJob);
 
-  async function handleSave() {
-    if (!result?.job || saving) return;
-    setSaving(true);
+  // Optimistic isSaved: flip immediately, real value follows from query
+  const querySaved = result?.isSaved ?? false;
+  const [optimisticSaved, setOptimisticSaved] = useState<boolean | null>(null);
+  const isSaved = optimisticSaved !== null ? optimisticSaved : querySaved;
+
+  async function handleSaveToggle() {
+    if (!result?.job || pendingSave) return;
+    const next = !isSaved;
+    setOptimisticSaved(next);
+    setPendingSave(true);
     try {
-      await saveJobMutation({ jobId: result.job._id });
+      if (next) {
+        await saveJobMutation({ jobId: result.job._id });
+      } else {
+        await unsaveJobMutation({ jobId: result.job._id });
+      }
+      // Let query take over; clear optimistic state
+      setOptimisticSaved(null);
+    } catch (err: unknown) {
+      // Revert optimistic flip
+      setOptimisticSaved(!next);
+      const code =
+        err instanceof Error
+          ? (err as { data?: { code?: string } }).data?.code
+          : null;
+      if (code === "UPGRADE_REQUIRED") {
+        setShowUpgradePrompt(true);
+      }
     } finally {
-      setSaving(false);
+      setPendingSave(false);
     }
   }
 
@@ -275,7 +299,7 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
     );
   }
 
-  const { job, sponsor, isPro, isSaved } = result;
+  const { job, sponsor, isPro } = result;
   const applyUrl = job.sourceIds[0]?.applyUrl ?? "#";
   const salary = formatSalary(job.salaryMin, job.salaryMax);
   const sourceLabel = SOURCE_LABELS[job.sourceIds[0]?.source ?? ""] ?? "";
@@ -372,8 +396,8 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
         {/* Action buttons */}
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
           <button
-            onClick={handleSave}
-            disabled={isSaved || saving}
+            onClick={handleSaveToggle}
+            disabled={pendingSave}
             style={{
               fontSize: 11,
               fontWeight: 600,
@@ -382,12 +406,13 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
               border: `1px solid ${isSaved ? "rgba(74,222,128,0.30)" : "rgba(255,255,255,0.15)"}`,
               background: isSaved ? "rgba(74,222,128,0.08)" : "rgba(255,255,255,0.04)",
               color: isSaved ? "#4ade80" : "rgba(255,255,255,0.60)",
-              cursor: isSaved ? "default" : "pointer",
+              cursor: pendingSave ? "default" : "pointer",
               fontFamily: "inherit",
               whiteSpace: "nowrap",
+              opacity: pendingSave ? 0.6 : 1,
             }}
           >
-            {isSaved ? "Saved" : saving ? "Saving…" : "Save"}
+            {pendingSave ? "…" : isSaved ? "Saved" : "Save"}
           </button>
 
           <a
@@ -433,6 +458,64 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
 
       {/* ── Scrollable body ─────────────────────────────────────────────── */}
       <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+
+        {/* Upgrade prompt — shown when free save limit is hit */}
+        {showUpgradePrompt && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              background: "rgba(27,170,193,0.08)",
+              border: "1px solid rgba(27,170,193,0.25)",
+              borderRadius: 8,
+              padding: "10px 14px",
+              marginBottom: 16,
+            }}
+          >
+            <div>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>
+                Save limit reached
+              </span>
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.50)", marginLeft: 8 }}>
+                Free plan allows 3 saved jobs.
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <a
+                href="/pricing"
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: "5px 10px",
+                  borderRadius: 0,
+                  background: "#1BAAC1",
+                  color: "#0a2828",
+                  textDecoration: "none",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Upgrade to Pro
+              </a>
+              <button
+                onClick={() => setShowUpgradePrompt(false)}
+                aria-label="Dismiss"
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "rgba(255,255,255,0.35)",
+                  fontSize: 16,
+                  lineHeight: 1,
+                  padding: 0,
+                }}
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── Job header card ───────────────────────────────────────────── */}
         <div
