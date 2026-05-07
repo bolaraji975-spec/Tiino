@@ -15,7 +15,7 @@
 import { useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { api } from "@/convex/_generated/api";
 
 // ---------------------------------------------------------------------------
@@ -74,6 +74,25 @@ function IconDashboard() {
       <rect x="8.5" y="1.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
       <rect x="1.5" y="8.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
       <rect x="8.5" y="8.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
+function IconHamburger() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <line x1="3" y1="5"  x2="17" y2="5"  stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="3" y1="10" x2="17" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="3" y1="15" x2="17" y2="15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconClose() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <line x1="3"  y1="3"  x2="15" y2="15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="15" y1="3"  x2="3"  y2="15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }
@@ -185,6 +204,8 @@ export default function AppNav() {
   const user = useQuery(api.users.getCurrentUser);
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // ── Auth guard ─────────────────────────────────────────────────────────────
@@ -192,6 +213,24 @@ export default function AppNav() {
     if (user === undefined) return; // still loading
     if (user === null) router.replace("/login");
   }, [user, router]);
+
+  // ── Responsive breakpoint ──────────────────────────────────────────────────
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  // ── Close sidebar on ESC ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSidebarOpen(false);
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [sidebarOpen]);
 
   // ── Close dropdown on outside click ────────────────────────────────────────
   useEffect(() => {
@@ -204,8 +243,11 @@ export default function AppNav() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [dropdownOpen]);
 
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+
   async function handleSignOut() {
     setDropdownOpen(false);
+    setSidebarOpen(false);
     await signOut();
     router.replace("/login");
   }
@@ -217,6 +259,61 @@ export default function AppNav() {
     : user?.email ?? "";
 
   return (
+    <>
+      {/* ── Mobile top bar ─────────────────────────────────────────────────── */}
+      {isMobile && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 52,
+            background: "#011818",
+            borderBottom: "1px solid rgba(255,255,255,0.09)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 16px",
+            zIndex: 100,
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
+          }}
+        >
+          <TinoLogo />
+          <button
+            onClick={() => setSidebarOpen((v) => !v)}
+            aria-label={sidebarOpen ? "Close navigation" : "Open navigation"}
+            aria-expanded={sidebarOpen}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "rgba(255,255,255,0.75)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 4,
+            }}
+          >
+            {sidebarOpen ? <IconClose /> : <IconHamburger />}
+          </button>
+        </div>
+      )}
+
+      {/* ── Mobile backdrop ────────────────────────────────────────────────── */}
+      {isMobile && sidebarOpen && (
+        <div
+          onClick={closeSidebar}
+          aria-hidden="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            zIndex: 101,
+          }}
+        />
+      )}
+
     <nav
       aria-label="App navigation"
       style={{
@@ -227,9 +324,20 @@ export default function AppNav() {
         display: "flex",
         flexDirection: "column",
         height: "100vh",
-        position: "sticky",
-        top: 0,
         fontFamily: "'Plus Jakarta Sans', sans-serif",
+        ...(isMobile
+          ? {
+              position: "fixed",
+              top: 0,
+              left: 0,
+              zIndex: 102,
+              transform: sidebarOpen ? "translateX(0)" : "translateX(-220px)",
+              transition: "transform 0.25s ease",
+            }
+          : {
+              position: "sticky",
+              top: 0,
+            }),
       }}
     >
       {/* ── Logo ─────────────────────────────────────────────────────────── */}
@@ -239,24 +347,45 @@ export default function AppNav() {
           borderBottom: "1px solid rgba(255,255,255,0.09)",
           display: "flex",
           alignItems: "center",
-          gap: 10,
+          justifyContent: "space-between",
         }}
       >
-        <TinoLogo />
-        <span
-          style={{
-            fontFamily: "'DM Mono', monospace",
-            fontSize: 8,
-            letterSpacing: "1.5px",
-            textTransform: "uppercase",
-            color: "#1BAAC1",
-            border: "1px solid rgba(27,170,193,0.30)",
-            padding: "2px 6px",
-            borderRadius: 2,
-          }}
-        >
-          Beta
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <TinoLogo />
+          <span
+            style={{
+              fontFamily: "'DM Mono', monospace",
+              fontSize: 8,
+              letterSpacing: "1.5px",
+              textTransform: "uppercase",
+              color: "#1BAAC1",
+              border: "1px solid rgba(27,170,193,0.30)",
+              padding: "2px 6px",
+              borderRadius: 2,
+            }}
+          >
+            Beta
+          </span>
+        </div>
+        {/* Close button inside drawer (mobile only) */}
+        {isMobile && (
+          <button
+            onClick={closeSidebar}
+            aria-label="Close navigation"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "rgba(255,255,255,0.45)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 4,
+            }}
+          >
+            <IconClose />
+          </button>
+        )}
       </div>
 
       {/* ── Primary nav ──────────────────────────────────────────────────── */}
@@ -271,7 +400,10 @@ export default function AppNav() {
               label={link.label}
               icon={link.icon}
               active={active}
-              onClick={() => router.push(link.href)}
+              onClick={() => {
+                router.push(link.href);
+                if (isMobile) setSidebarOpen(false);
+              }}
             />
           );
         })}
@@ -466,5 +598,6 @@ export default function AppNav() {
         )}
       </div>
     </nav>
+    </>
   );
 }

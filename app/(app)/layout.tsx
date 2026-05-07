@@ -29,6 +29,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     >
       <AppNav />
       <main
+        className="app-main"
         style={{
           flex: 1,
           display: "flex",
