@@ -9,7 +9,6 @@
  */
 
 import type * as applications_mutations from "../applications/mutations.js";
-import type * as stripe_checkout from "../stripe/checkout.js";
 import type * as auth from "../auth.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
@@ -27,16 +26,19 @@ import type * as lib_alerts from "../lib/alerts.js";
 import type * as lib_companyLogo from "../lib/companyLogo.js";
 import type * as lib_detectSponsorshipSignal from "../lib/detectSponsorshipSignal.js";
 import type * as lib_matchCompanyToSponsor from "../lib/matchCompanyToSponsor.js";
+import type * as lib_matchRoleVariation from "../lib/matchRoleVariation.js";
 import type * as lib_normaliseJob from "../lib/normaliseJob.js";
 import type * as lib_normaliseName from "../lib/normaliseName.js";
 import type * as lib_parseSponsorCsv from "../lib/parseSponsorCsv.js";
 import type * as lib_parseSponsorRow from "../lib/parseSponsorRow.js";
+import type * as lib_planGates from "../lib/planGates.js";
 import type * as profiles from "../profiles.js";
 import type * as profiles_generateRoleVariations from "../profiles/generateRoleVariations.js";
 import type * as profiles_parseCv from "../profiles/parseCv.js";
 import type * as sponsors_refresh from "../sponsors/refresh.js";
 import type * as sponsors_seedTradingNames from "../sponsors/seedTradingNames.js";
 import type * as sponsors_tradingNames from "../sponsors/tradingNames.js";
+import type * as stripe_checkout from "../stripe/checkout.js";
 import type * as users from "../users.js";
 
 import type {
@@ -47,7 +49,6 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "applications/mutations": typeof applications_mutations;
-  "stripe/checkout": typeof stripe_checkout;
   auth: typeof auth;
   crons: typeof crons;
   http: typeof http;
@@ -65,16 +66,19 @@ declare const fullApi: ApiFromModules<{
   "lib/companyLogo": typeof lib_companyLogo;
   "lib/detectSponsorshipSignal": typeof lib_detectSponsorshipSignal;
   "lib/matchCompanyToSponsor": typeof lib_matchCompanyToSponsor;
+  "lib/matchRoleVariation": typeof lib_matchRoleVariation;
   "lib/normaliseJob": typeof lib_normaliseJob;
   "lib/normaliseName": typeof lib_normaliseName;
   "lib/parseSponsorCsv": typeof lib_parseSponsorCsv;
   "lib/parseSponsorRow": typeof lib_parseSponsorRow;
+  "lib/planGates": typeof lib_planGates;
   profiles: typeof profiles;
   "profiles/generateRoleVariations": typeof profiles_generateRoleVariations;
   "profiles/parseCv": typeof profiles_parseCv;
   "sponsors/refresh": typeof sponsors_refresh;
   "sponsors/seedTradingNames": typeof sponsors_seedTradingNames;
   "sponsors/tradingNames": typeof sponsors_tradingNames;
+  "stripe/checkout": typeof stripe_checkout;
   users: typeof users;
 }>;
 
