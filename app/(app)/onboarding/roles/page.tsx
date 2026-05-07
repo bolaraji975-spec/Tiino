@@ -487,7 +487,7 @@ export default function RolesPage() {
           <SaveStatus status={saveStatus} />
 
           <button
-            onClick={() => router.push("/feed")}
+            onClick={() => router.push("/jobs")}
             style={{
               background: "#1BAAC1",
               color: "#0a2828",

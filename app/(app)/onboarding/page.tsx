@@ -57,7 +57,7 @@ export default function OnboardingPage() {
       return;
     }
     if (user.visaStatus !== undefined) {
-      router.replace("/feed");
+      router.replace("/jobs");
     }
   }, [user, router]);
 
@@ -83,7 +83,7 @@ export default function OnboardingPage() {
         salaryMax: max,
         rightToWork,
       });
-      router.replace("/feed");
+      router.replace("/jobs");
     } catch (err: unknown) {
       setError(
         err instanceof Error ? err.message : "Something went wrong. Please try again.",

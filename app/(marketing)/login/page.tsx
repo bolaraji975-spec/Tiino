@@ -35,7 +35,7 @@ function LoginForm() {
   useEffect(() => {
     if (!code) return;
     signIn("email", { code })
-      .then(() => router.replace("/feed"))
+      .then(() => router.replace("/jobs"))
       .catch((err: unknown) => {
         setErrorMsg(
           err instanceof Error ? err.message : "Verification failed.",

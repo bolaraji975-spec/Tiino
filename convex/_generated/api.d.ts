@@ -13,6 +13,7 @@ import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as jobs_ingest from "../jobs/ingest.js";
 import type * as jobs_ingestMutations from "../jobs/ingestMutations.js";
+import type * as jobs_queries from "../jobs/queries.js";
 import type * as jobs_score from "../jobs/score.js";
 import type * as jobs_sources_adzuna from "../jobs/sources/adzuna.js";
 import type * as jobs_sources_civilservice from "../jobs/sources/civilservice.js";
@@ -48,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "jobs/ingest": typeof jobs_ingest;
   "jobs/ingestMutations": typeof jobs_ingestMutations;
+  "jobs/queries": typeof jobs_queries;
   "jobs/score": typeof jobs_score;
   "jobs/sources/adzuna": typeof jobs_sources_adzuna;
   "jobs/sources/civilservice": typeof jobs_sources_civilservice;

@@ -151,7 +151,7 @@ export default function CvUploadPage() {
       await saveCv({ storageId: storageId as Id<"_storage"> });
 
       setUploadState({ status: "done" });
-      router.replace("/feed");
+      router.replace("/jobs");
     } catch (err: unknown) {
       setUploadState({
         status: "error",
@@ -293,7 +293,7 @@ export default function CvUploadPage() {
         {(uploadState.status === "idle" || uploadState.status === "error") && (
           <button
             type="button"
-            onClick={() => router.replace("/feed")}
+            onClick={() => router.replace("/jobs")}
             className="mt-4 w-full text-center text-xs text-gray-500 hover:text-gray-300
                        underline underline-offset-2"
           >

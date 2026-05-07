@@ -192,7 +192,7 @@ function getInitials(name?: string | null, email?: string | null): string {
 // ---------------------------------------------------------------------------
 
 const NAV_LINKS = [
-  { href: "/feed",      label: "Jobs feed",  icon: <IconJobs /> },
+  { href: "/jobs",      label: "Jobs feed",  icon: <IconJobs /> },
   { href: "/tracker",   label: "Tracker",    icon: <IconTracker /> },
   { href: "/dashboard", label: "Dashboard",  icon: <IconDashboard /> },
 ] as const;
