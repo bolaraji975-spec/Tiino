@@ -9,6 +9,7 @@
  */
 
 import type * as applications_mutations from "../applications/mutations.js";
+import type * as stripe_checkout from "../stripe/checkout.js";
 import type * as auth from "../auth.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
@@ -46,6 +47,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "applications/mutations": typeof applications_mutations;
+  "stripe/checkout": typeof stripe_checkout;
   auth: typeof auth;
   crons: typeof crons;
   http: typeof http;

@@ -161,9 +161,9 @@ Free users see band only. Pro users see numeric score + breakdown.
 | Tier | Price |
 |---|---|
 | Free | £0 — 3 saved jobs, 1 CV/month, band only |
-| Pro Monthly | £9.99/mo — unlimited, numeric score, daily digest |
-| Pro Annual | £79/yr — everything in Pro Monthly |
-| Pay-per-CV | £3.99 — single CV generation, credits never expire |
+| Pro Monthly | £3.99/mo — 20 CVs/month, unlimited saves, full score, daily digest |
+| Pro Annual | £35/yr — everything in Pro Monthly |
+| Pay-per-CV | £1.99 — single CV credit, credits never expire |
 
 **These prices are locked. Do not change them without an explicit instruction.**
 
@@ -176,7 +176,7 @@ Free users see band only. Pro users see numeric score + breakdown.
 - All Claude calls run from Convex actions, never from the client
 - Never pass one user's data to Claude when processing another user
 - Cache generated CVs — re-clicking "generate" on the same job within 24h returns cached output
-- Per-user daily cap: free = 1/month, Pro = 50/day
+- Per-user monthly cap: free = 1 CV/month, Pro = 20 CVs/month, Pay-per-CV = 1 credit per purchase
 - Hard cap: if any single user exceeds 100 Claude calls in 1 hour, block and alert admin
 
 ---
@@ -254,7 +254,7 @@ Every architectural decision goes in `docs/decisions/`. File format: `NNN-short-
 Already made:
 - Convex over Supabase
 - Weekly sponsor refresh cadence (daily available as admin override)
-- Pricing locked: £9.99 / £79 / £3.99
+- Pricing locked: £3.99/mo / £35/yr / £1.99 pay-per-CV
 - No recruiter-side product in v1
 - gov.uk register as sole sponsor data source (Companies House enrichment is P2, ticket 008)
 - Companies House enrichment: YES, pay ~£0.01/lookup
