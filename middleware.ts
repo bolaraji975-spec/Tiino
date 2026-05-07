@@ -8,7 +8,13 @@ const isAuthRoute = createRouteMatcher(["/login"]);
 const isProtectedRoute = createRouteMatcher(["/jobs(.*)", "/applications(.*)", "/settings(.*)", "/onboarding(.*)"]);
 
 export default convexAuthNextjsMiddleware(async (request, { convexAuth }) => {
-  const isSignedIn = await convexAuth.isAuthenticated();
+  // getToken() reads the JWT cookie locally — no Convex network call.
+  // isAuthenticated() does a fetchQuery on every request which fails silently
+  // and causes a redirect loop when the Convex URL isn't reachable in the
+  // Edge runtime. A present token is sufficient proof for routing; Convex
+  // validates it when actual queries run.
+  const token = await convexAuth.getToken();
+  const isSignedIn = token !== undefined;
 
   // Redirect signed-in users away from the login page
   if (isAuthRoute(request) && isSignedIn) {
