@@ -71,6 +71,7 @@ const jobInputValidator = v.object({
       v.literal("nhs"),
       v.literal("civil_service"),
       v.literal("jobs_ac"),
+      v.literal("find_a_job"),
     ),
     externalId: v.string(),
     applyUrl: v.string(),

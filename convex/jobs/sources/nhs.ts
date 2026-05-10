@@ -12,7 +12,7 @@
 
 import type { RawJob } from "../types";
 
-const BASE_URL = "https://jobs.nhs.uk/api/v1/search";
+const BASE_URL = "https://www.jobs.nhs.uk/api/v1/search";
 const PAGE_SIZE = 100;
 const RESULTS_CAP = 500;
 
@@ -115,7 +115,11 @@ export async function fetchNhsJobs(keyword = ""): Promise<RawJob[]> {
     });
 
     const res = await fetch(`${BASE_URL}?${params}`, {
-      headers: { Accept: "application/json" },
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; Tino/1.0; +https://tiino.app)",
+        "Accept": "application/json",
+        "Accept-Language": "en-GB,en;q=0.9",
+      },
     });
 
     if (!res.ok) {

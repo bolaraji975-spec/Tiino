@@ -47,7 +47,7 @@ type ReedSearchResponse = {
 // ---------------------------------------------------------------------------
 
 function authHeader(apiKey: string): string {
-  return "Basic " + btoa(apiKey + ":");
+  return "Basic " + Buffer.from(apiKey + ":").toString("base64");
 }
 
 async function fetchPage(
@@ -101,11 +101,25 @@ function toRawJob(job: ReedJob): RawJob {
 // ---------------------------------------------------------------------------
 
 /**
- * Explicit mode: search for "visa sponsorship" keyword — returns jobs
- * where employers have self-declared they can sponsor.
+ * Explicit mode: search for sponsorship keywords — returns jobs where
+ * employers have self-declared they can sponsor. Deduplicates across both
+ * keyword searches by Reed job ID.
  */
 export async function fetchReedExplicit(apiKey: string): Promise<RawJob[]> {
-  return fetchReed(apiKey, "visa sponsorship");
+  const [visaJobs, cosJobs] = await Promise.all([
+    fetchReed(apiKey, "visa sponsorship"),
+    fetchReed(apiKey, "certificate of sponsorship"),
+  ]);
+
+  const seen = new Set<string>();
+  const merged: RawJob[] = [];
+  for (const job of [...visaJobs, ...cosJobs]) {
+    if (!seen.has(job.externalId)) {
+      seen.add(job.externalId);
+      merged.push({ ...job, explicit: true });
+    }
+  }
+  return merged;
 }
 
 /**

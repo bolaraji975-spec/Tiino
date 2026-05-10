@@ -21,6 +21,7 @@ import { fetchAdzunaExplicit, fetchAdzunaBroad } from "./sources/adzuna";
 import { fetchNhsJobs } from "./sources/nhs";
 import { fetchCivilServiceJobs } from "./sources/civilservice";
 import { fetchJobsAc } from "./sources/jobsac";
+import { fetchFindAJob } from "./sources/findajob";
 import { normaliseJob } from "../lib/normaliseJob";
 import { detectSponsorshipSignal } from "../lib/detectSponsorshipSignal";
 import { normaliseName } from "../lib/normaliseName";
@@ -83,6 +84,7 @@ export const ingestFromSource = action({
       v.literal("nhs"),
       v.literal("civil_service"),
       v.literal("jobs_ac"),
+      v.literal("find_a_job"),
     ),
     mode: v.union(v.literal("explicit"), v.literal("broad")),
   },
@@ -111,6 +113,8 @@ export const ingestFromSource = action({
       rawJobs = await fetchNhsJobs();
     } else if (source === "civil_service") {
       rawJobs = await fetchCivilServiceJobs();
+    } else if (source === "find_a_job") {
+      rawJobs = await fetchFindAJob();
     } else {
       rawJobs = await fetchJobsAc();
     }
@@ -119,6 +123,7 @@ export const ingestFromSource = action({
     const normalised = rawJobs.map((raw) => {
       const job = normaliseJob(raw);
       const signal = detectSponsorshipSignal(raw.description);
+      const signalExplicitOverride = raw.explicit === true;
       const companyNorm = normaliseName(raw.company);
       return {
         sourceId: job.sourceId,
@@ -134,7 +139,7 @@ export const ingestFromSource = action({
         postedAt: job.postedAt,
         isAgency: job.isAgency,
         isPublicSector: job.isPublicSector,
-        signalExplicit: signal.explicit,
+        signalExplicit: signalExplicitOverride || signal.explicit,
         signalNegative: signal.negative,
       };
     });

@@ -16,12 +16,20 @@ crons.weekly(
 
 // ---------------------------------------------------------------------------
 // Job ingestion — explicit sponsorship listings
-// Daily 04:00 UTC — Reed "visa sponsorship" keyword search
+// Daily 04:45 UTC — GOV.UK Find a Job (visa sponsorship + CoS keywords)
+// Daily 05:00 UTC — Reed (visa sponsorship + CoS keywords)
 // ---------------------------------------------------------------------------
 
 crons.daily(
+  "ingest find_a_job explicit",
+  { hourUTC: 4, minuteUTC: 45 },
+  api.jobs.ingest.ingestFromSource,
+  { source: "find_a_job", mode: "explicit" },
+);
+
+crons.daily(
   "ingest reed explicit",
-  { hourUTC: 4, minuteUTC: 0 },
+  { hourUTC: 5, minuteUTC: 0 },
   api.jobs.ingest.ingestFromSource,
   { source: "reed", mode: "explicit" },
 );
