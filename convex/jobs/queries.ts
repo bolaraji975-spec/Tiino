@@ -3,7 +3,7 @@
  */
 
 import { v } from "convex/values";
-import { query } from "../_generated/server";
+import { query, internalQuery } from "../_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { matchesRoleVariation } from "../lib/matchRoleVariation";
 
@@ -232,4 +232,13 @@ export const listForUser = query({
       isPro,
     };
   },
+});
+
+// ---------------------------------------------------------------------------
+// _getJobForGenerate — internal: load a job by ID for the generate action
+// ---------------------------------------------------------------------------
+
+export const _getJobForGenerate = internalQuery({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, { jobId }) => ctx.db.get(jobId),
 });

@@ -5,7 +5,7 @@
  */
 
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
 // ---------------------------------------------------------------------------
@@ -134,5 +134,23 @@ export const updateRoleVariations = mutation({
       roleVariations: { exact, adjacent },
       updatedAt: Date.now(),
     });
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Internal helpers used by generateApplication action
+// ---------------------------------------------------------------------------
+
+export const _getUserById = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => ctx.db.get(userId),
+});
+
+export const _decrementCvCredits = internalMutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    const user = await ctx.db.get(userId);
+    if (!user || user.payPerCvCredits <= 0) return;
+    await ctx.db.patch(userId, { payPerCvCredits: user.payPerCvCredits - 1 });
   },
 });

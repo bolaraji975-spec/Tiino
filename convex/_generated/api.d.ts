@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as applications_generate from "../applications/generate.js";
 import type * as applications_mutations from "../applications/mutations.js";
 import type * as auth from "../auth.js";
 import type * as crons from "../crons.js";
@@ -49,6 +50,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "applications/generate": typeof applications_generate;
   "applications/mutations": typeof applications_mutations;
   auth: typeof auth;
   crons: typeof crons;

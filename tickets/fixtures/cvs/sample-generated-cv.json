@@ -1,0 +1,45 @@
+{
+  "name": "Amara Osei",
+  "email": "amara.osei@email.com",
+  "phone": "+44 7700 900123",
+  "summary": "Senior Software Engineer with 7 years of experience building distributed systems and microservices in Python and TypeScript. Proven track record of reducing latency and leading cross-functional engineering teams. Eager to bring expertise in cloud infrastructure and payments architecture to Monzo's platform team.",
+  "experience": [
+    {
+      "title": "Senior Software Engineer",
+      "company": "FinTech Solutions Ltd",
+      "startDate": "Jan 2021",
+      "endDate": "Present",
+      "bullets": [
+        "Led migration of monolithic payments platform to microservices on Kubernetes, improving deployment frequency by 5x",
+        "Reduced API latency by 40% through Redis caching strategy serving 2M+ daily requests",
+        "Designed PostgreSQL schema supporting multi-currency accounts for 500k customers",
+        "Mentored 4 junior engineers through technical design reviews and pair programming",
+        "Championed CI/CD adoption cutting release cycle from 2 weeks to same-day"
+      ]
+    },
+    {
+      "title": "Software Engineer",
+      "company": "Digital Agency Co",
+      "startDate": "Jun 2018",
+      "endDate": "Dec 2020",
+      "bullets": [
+        "Built Python/Node.js backend services for 10+ enterprise clients across fintech and retail sectors",
+        "Implemented CI/CD pipelines on AWS cutting deployment time by 60%",
+        "Contributed to open-source tooling used by 200+ developers"
+      ]
+    }
+  ],
+  "skills": [
+    "Python", "Kubernetes", "PostgreSQL", "Redis", "Microservices",
+    "AWS", "GCP", "Docker", "TypeScript", "Node.js", "React",
+    "Terraform", "CI/CD", "Agile/Scrum"
+  ],
+  "education": [
+    {
+      "degree": "BSc Computer Science",
+      "institution": "University of Birmingham",
+      "year": "2018"
+    }
+  ],
+  "coverLetter": "Dear Hiring Team at Monzo,\n\nI am writing to apply for the Senior Software Engineer position on your platform team. With seven years of backend engineering experience focused on distributed systems and payments infrastructure, I am excited by the opportunity to contribute to a product used by millions of customers daily.\n\nIn my current role at FinTech Solutions Ltd, I led the migration of a monolithic payments platform to microservices running on Kubernetes. This project reduced our deployment cycle from fortnightly releases to same-day deployments and improved system resilience significantly. I also designed a Redis caching strategy that cut API latency by 40% at scale — the kind of performance challenge that I understand is central to Monzo's engineering culture.\n\nMy experience with PostgreSQL at scale, Kubernetes orchestration, and Python microservices aligns directly with your requirements. Beyond the technical skills, I bring a track record of mentoring engineers and driving technical direction through design reviews — something I'm keen to continue at Monzo.\n\nI am eligible for a Skilled Worker visa and would welcome sponsorship support. I would be delighted to discuss how my background fits your platform team's roadmap.\n\nYours sincerely,\nAmara Osei"
+}

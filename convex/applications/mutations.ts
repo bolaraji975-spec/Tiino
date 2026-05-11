@@ -7,7 +7,7 @@
  */
 
 import { ConvexError, v } from "convex/values";
-import { mutation } from "../_generated/server";
+import { mutation, internalQuery, internalMutation } from "../_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { canSaveJob } from "../lib/planGates";
 
@@ -85,5 +85,87 @@ export const unsaveJob = mutation({
 
     await ctx.db.delete(application._id);
     return application._id;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Internal helpers for generateApplication action
+// ---------------------------------------------------------------------------
+
+/** Count CV generation events in the current calendar month for a user. */
+export const _getCvGenerationsThisMonth = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    const start = new Date();
+    start.setUTCDate(1);
+    start.setUTCHours(0, 0, 0, 0);
+    const events = await ctx.db
+      .query("events")
+      .withIndex("byUserAt", (q) =>
+        q.eq("userId", userId).gte("at", start.getTime()),
+      )
+      .filter((q) => q.eq(q.field("type"), "cv_generated"))
+      .collect();
+    return events.length;
+  },
+});
+
+/** Return existing application for a (userId, jobId) pair, or null. */
+export const _getApplicationForUserJob = internalQuery({
+  args: { userId: v.id("users"), jobId: v.id("jobs") },
+  handler: async (ctx, { userId, jobId }) =>
+    ctx.db
+      .query("applications")
+      .withIndex("byJob", (q) => q.eq("jobId", jobId))
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .first(),
+});
+
+/**
+ * Create or update an application with cv_generated stage and inline CV data.
+ * - If existing application is at "saved": advance stage to "cv_generated".
+ * - If already past "saved" (applied, interview…): keep existing stage, just
+ *   update cvData so the user can re-generate without resetting progress.
+ */
+export const _upsertApplicationCv = internalMutation({
+  args: {
+    userId: v.id("users"),
+    jobId: v.id("jobs"),
+    generatedCvData: v.any(),
+    scoreAtApply: v.optional(v.number()),
+  },
+  handler: async (ctx, { userId, jobId, generatedCvData, scoreAtApply }) => {
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("applications")
+      .withIndex("byJob", (q) => q.eq("jobId", jobId))
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .first();
+
+    if (existing) {
+      const advanceStage = existing.stage === "saved";
+      await ctx.db.patch(existing._id, {
+        ...(advanceStage ? { stage: "cv_generated" as const } : {}),
+        stageHistory: [
+          ...existing.stageHistory,
+          { stage: "cv_generated", at: now },
+        ],
+        generatedCvData,
+        ...(scoreAtApply !== undefined ? { scoreAtApply } : {}),
+      });
+      return existing._id;
+    }
+
+    return ctx.db.insert("applications", {
+      userId,
+      jobId,
+      stage: "cv_generated",
+      stageHistory: [
+        { stage: "saved", at: now },
+        { stage: "cv_generated", at: now },
+      ],
+      generatedCvData,
+      ...(scoreAtApply !== undefined ? { scoreAtApply } : {}),
+    });
   },
 });

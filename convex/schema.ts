@@ -171,6 +171,8 @@ export default defineSchema({
     sponsorshipConfirmed: v.optional(v.boolean()),
     salaryOffered: v.optional(v.number()),
     scoreAtApply: v.optional(v.number()),
+    // Inline generated CV+cover letter JSON from generateApplication action
+    generatedCvData: v.optional(v.any()),
   })
     .index("byUser", ["userId"])
     .index("byUserStage", ["userId", "stage"])
