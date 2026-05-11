@@ -1,143 +1,152 @@
 /**
- * NHS Jobs public API adapter
+ * NHS Jobs XML API adapter
  *
- * Endpoint: https://jobs.nhs.uk/api/v1/search
+ * Endpoint: https://www.jobs.nhs.uk/api/v1/search_xml
  * Auth: none (public API)
- * Docs: https://jobs.nhs.uk/employer/api-documentation
+ *
+ * Runs three keyword searches in parallel (visa sponsorship, certificate of
+ * sponsorship, skilled worker visa), paginates each up to RESULTS_CAP, then
+ * deduplicates by NHS job ID.
  *
  * All NHS employers are public-sector bodies. None are recruitment agencies.
- * The NHS is a licensed Skilled Worker sponsor — sponsor matching happens
- * via the register, not here.
  */
 
 import type { RawJob } from "../types";
 
-const BASE_URL = "https://www.jobs.nhs.uk/api/v1/search";
-const PAGE_SIZE = 100;
-const RESULTS_CAP = 500;
+const BASE_URL = "https://www.jobs.nhs.uk/api/v1/search_xml";
+const PAGE_SIZE = 100; // one page per keyword — keeps action well within timeout
+
+const KEYWORDS = [
+  "visa sponsorship",
+  "certificate of sponsorship",
+  "skilled worker visa",
+];
 
 // ---------------------------------------------------------------------------
-// API types (partial)
+// XML parsing helpers (no external dependency)
 // ---------------------------------------------------------------------------
 
-type NhsLocation = {
-  town?: string;
-  county?: string;
-  region?: string;
-};
-
-type NhsPayScheme = {
-  minimum?: number;
-  maximum?: number;
-  payBand?: string;
-};
-
-type NhsVacancy = {
-  vacancyId: string;
-  jobTitle: string;
-  employer: { name: string };
-  location: NhsLocation;
-  payScheme?: NhsPayScheme;
-  closingDate?: string;
-  publicationDate?: string;
-  shortDescription?: string;
-  url?: string;
-};
-
-type NhsSearchResponse = {
-  data?: NhsVacancy[];
-  totalResults?: number;
-  // some endpoints use "vacancies" key
-  vacancies?: NhsVacancy[];
-};
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function buildLocation(loc: NhsLocation): string {
-  const parts = [loc.town, loc.county, loc.region].filter(Boolean);
-  return parts.length > 0 ? parts.join(", ") : "United Kingdom";
+/** Extract the text content of the first matching tag. */
+function tag(xml: string, name: string): string {
+  const re = new RegExp(`<${name}[^>]*>([\\s\\S]*?)<\\/${name}>`, "i");
+  const m = xml.match(re);
+  return m ? m[1].trim() : "";
 }
 
-function parseNhsSalary(scheme?: NhsPayScheme): { min?: number; max?: number } {
-  if (!scheme) return {};
+/** Extract all <vacancyDetails> blocks from a full API response. */
+function extractVacancies(xml: string): string[] {
+  const blocks: string[] = [];
+  const re = /<vacancyDetails>([\s\S]*?)<\/vacancyDetails>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) {
+    blocks.push(m[1]);
+  }
+  return blocks;
+}
+
+// ---------------------------------------------------------------------------
+// Salary parsing
+// "£25,760.00 to £27,476.00" → { min: 25760, max: 27476 }
+// "£25,272.00"                → { min: 25272 }
+// "Depending on experience"   → {}
+// ---------------------------------------------------------------------------
+
+function parseSalary(raw: string): { min?: number; max?: number } {
+  const nums = [...raw.matchAll(/£([\d,]+(?:\.\d+)?)/g)]
+    .map((m) => parseFloat(m[1].replace(/,/g, "")))
+    .filter((n) => !isNaN(n) && n > 0);
+
+  if (nums.length === 0) return {};
+  if (nums.length === 1) return { min: Math.round(nums[0]) };
+  return { min: Math.round(nums[0]), max: Math.round(nums[1]) };
+}
+
+// ---------------------------------------------------------------------------
+// Convert a <vacancyDetails> block to RawJob
+// ---------------------------------------------------------------------------
+
+function toRawJob(block: string): RawJob | null {
+  const id = tag(block, "id");
+  const title = tag(block, "title");
+  const applyUrl = tag(block, "url");
+
+  if (!id || !title || !applyUrl) return null;
+
+  const salary = parseSalary(tag(block, "salary"));
+  const postDateStr = tag(block, "postDate");
+  const postedAt = postDateStr ? new Date(postDateStr).getTime() : Date.now();
+
+  // First <location> inside <locations>
+  const locationsBlock = tag(block, "locations");
+  const location = tag(locationsBlock, "location") || "United Kingdom";
+
   return {
-    min: scheme.minimum ?? undefined,
-    max: scheme.maximum ?? undefined,
-  };
-}
-
-function vacancyUrl(vacancy: NhsVacancy): string {
-  if (vacancy.url) return vacancy.url;
-  return `https://jobs.nhs.uk/candidate/jobadvert/${vacancy.vacancyId}`;
-}
-
-function toRawJob(v: NhsVacancy): RawJob {
-  const salary = parseNhsSalary(v.payScheme);
-  const postedAt = v.publicationDate
-    ? new Date(v.publicationDate).getTime()
-    : Date.now();
-
-  return {
-    externalId: v.vacancyId,
+    externalId: id,
     source: "nhs",
-    title: v.jobTitle.trim(),
-    company: v.employer.name.trim(),
-    location: buildLocation(v.location),
-    description: v.shortDescription ?? "",
+    title: title,
+    company: tag(block, "employer") || "NHS",
+    location,
+    description: tag(block, "description"),
     salaryMin: salary.min,
     salaryMax: salary.max,
     salaryCurrency: "GBP",
     salaryPeriod: "year",
-    postedAt,
-    applyUrl: vacancyUrl(v),
+    postedAt: isNaN(postedAt) ? Date.now() : postedAt,
+    applyUrl,
     isAgency: false,
+    explicit: true,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Fetch one page for one keyword
+// ---------------------------------------------------------------------------
+
+async function fetchKeyword(keyword: string): Promise<RawJob[]> {
+  const params = new URLSearchParams({
+    keyword,
+    limit: String(PAGE_SIZE),
+    sort: "publicationDateDesc",
+  });
+
+  const res = await fetch(`${BASE_URL}?${params}`, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; Tino/1.0; +https://tiino.app)",
+      "Accept": "application/xml, text/xml",
+      "Accept-Language": "en-GB,en;q=0.9",
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`NHS Jobs XML API error (HTTP ${res.status}) for keyword "${keyword}"`);
+  }
+
+  const xml = await res.text();
+  const jobs: RawJob[] = [];
+  for (const block of extractVacancies(xml)) {
+    const job = toRawJob(block);
+    if (job) jobs.push(job);
+  }
+  return jobs;
 }
 
 // ---------------------------------------------------------------------------
 // Public adapter function
 // ---------------------------------------------------------------------------
 
-export async function fetchNhsJobs(keyword = ""): Promise<RawJob[]> {
+export async function fetchNhsJobs(): Promise<RawJob[]> {
+  const results = await Promise.all(KEYWORDS.map((kw) => fetchKeyword(kw)));
+
+  // Deduplicate by externalId across all keyword searches
+  const seen = new Set<string>();
   const jobs: RawJob[] = [];
-  let page = 1;
-
-  while (jobs.length < RESULTS_CAP) {
-    const params = new URLSearchParams({
-      keyword,
-      location: "",
-      distance: "national",
-      page: String(page),
-      sort: "publicationDateDesc",
-      size: String(PAGE_SIZE),
-    });
-
-    const res = await fetch(`${BASE_URL}?${params}`, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; Tino/1.0; +https://tiino.app)",
-        "Accept": "application/json",
-        "Accept-Language": "en-GB,en;q=0.9",
-      },
-    });
-
-    if (!res.ok) {
-      throw new Error(`NHS Jobs API error (HTTP ${res.status})`);
+  for (const batch of results) {
+    for (const job of batch) {
+      if (!seen.has(job.externalId)) {
+        seen.add(job.externalId);
+        jobs.push(job);
+      }
     }
-
-    const data = (await res.json()) as NhsSearchResponse;
-    const vacancies = data.data ?? data.vacancies ?? [];
-
-    if (vacancies.length === 0) break;
-
-    for (const v of vacancies) {
-      jobs.push(toRawJob(v));
-    }
-
-    const total = data.totalResults ?? 0;
-    page++;
-    if (jobs.length >= total) break;
   }
 
   return jobs;
