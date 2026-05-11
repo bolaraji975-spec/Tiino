@@ -169,3 +169,25 @@ export const _upsertApplicationCv = internalMutation({
     });
   },
 });
+
+// ---------------------------------------------------------------------------
+// Internal helpers for buildCvDocx action
+// ---------------------------------------------------------------------------
+
+/** Fetch a single application by ID (no auth — caller must verify ownership). */
+export const _getApplicationById = internalQuery({
+  args: { applicationId: v.id("applications") },
+  handler: async (ctx, { applicationId }) => ctx.db.get(applicationId),
+});
+
+/** Write CV and cover letter storage IDs back to an application record. */
+export const _setDocxFileIds = internalMutation({
+  args: {
+    applicationId: v.id("applications"),
+    cvFileId: v.id("_storage"),
+    coverLetterFileId: v.id("_storage"),
+  },
+  handler: async (ctx, { applicationId, cvFileId, coverLetterFileId }) => {
+    await ctx.db.patch(applicationId, { cvFileId, coverLetterFileId });
+  },
+});
