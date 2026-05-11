@@ -78,6 +78,17 @@ async function fetchPage(
   return res.json() as Promise<ReedSearchResponse>;
 }
 
+// Reed returns dates as "13/05/2026" (DD/MM/YYYY) or ISO strings.
+// new Date("13/05/2026") is Invalid in V8 — parse explicitly.
+function parseReedDate(dateStr: string | undefined): number {
+  if (!dateStr) return Date.now();
+  const iso = new Date(dateStr);
+  if (!isNaN(iso.getTime())) return iso.getTime();
+  const parts = dateStr.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (parts) return new Date(`${parts[3]}-${parts[2]}-${parts[1]}`).getTime();
+  return Date.now();
+}
+
 function toRawJob(job: ReedJob): RawJob {
   return {
     externalId: String(job.jobId),
@@ -90,7 +101,7 @@ function toRawJob(job: ReedJob): RawJob {
     salaryMax: job.maximumSalary ?? undefined,
     salaryCurrency: job.currency ?? "GBP",
     salaryPeriod: "year",
-    postedAt: new Date(job.date).getTime(),
+    postedAt: parseReedDate(job.date),
     applyUrl: job.jobUrl,
     isAgency: job.recruitmentAgency !== null && job.recruitmentAgency !== "",
   };
