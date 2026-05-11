@@ -145,16 +145,22 @@ export const ingestFromSource = action({
     });
 
     // --- 2b. Extract criteria for public sector jobs via Claude Haiku ---
+    // Process in batches of 5 to avoid Anthropic 429 rate limits.
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
-    const payloads = await Promise.all(
-      normalised.map(async (job) => {
-        if (!job.isPublicSector || !anthropicKey) {
-          return { ...job, extractedCriteria: undefined };
-        }
-        const criteria = await extractCriteria(job.description, anthropicKey);
-        return { ...job, extractedCriteria: criteria.length > 0 ? criteria : undefined };
-      }),
-    );
+    const payloads: typeof normalised[number][] & { extractedCriteria?: string[] }[] = [];
+    for (let i = 0; i < normalised.length; i += 5) {
+      const batch = normalised.slice(i, i + 5);
+      const extracted = await Promise.all(
+        batch.map(async (job) => {
+          if (!job.isPublicSector || !anthropicKey) {
+            return { ...job, extractedCriteria: undefined };
+          }
+          const criteria = await extractCriteria(job.description, anthropicKey);
+          return { ...job, extractedCriteria: criteria.length > 0 ? criteria : undefined };
+        }),
+      );
+      payloads.push(...extracted);
+    }
 
     // --- 3. Batch upsert via mutations ---
     let upserted = 0;
