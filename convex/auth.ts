@@ -21,6 +21,8 @@ import { convexAuth } from "@convex-dev/auth/server";
 import { Email } from "@convex-dev/auth/providers/Email";
 import { Password } from "@convex-dev/auth/providers/Password";
 import Google from "@auth/core/providers/google";
+import { validatePasswordRequirements } from "./lib/validatePassword";
+import { escapeHtml } from "./lib/htmlUtils";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -106,7 +108,7 @@ function verifyEmailHtml(url: string, email: string): string {
   return emailShell(`
     <h2 style="margin-top:0;color:#f9fafb;font-size:20px;">Verify your email address</h2>
     <p style="color:#9ca3af;line-height:1.6;">
-      You signed up for Tino with <strong style="color:#e5e7eb;">${email}</strong>.
+      You signed up for Tino with <strong style="color:#e5e7eb;">${escapeHtml(email)}</strong>.
       Click the button below to verify your email address.
     </p>
     <a href="${url}"
@@ -195,14 +197,7 @@ const PasswordReset = Email({
 // ---------------------------------------------------------------------------
 
 const PasswordProvider = Password({
-  validatePasswordRequirements(password: string) {
-    if (password.length < 8) {
-      throw new Error("Password must be at least 8 characters.");
-    }
-    if (!/[0-9!@#$%^&*()\-_=+[\]{};':"\\|,.<>?/`~]/.test(password)) {
-      throw new Error("Password must include at least one number or special character.");
-    }
-  },
+  validatePasswordRequirements,
   reset: PasswordReset,
   verify: EmailVerification,
 });

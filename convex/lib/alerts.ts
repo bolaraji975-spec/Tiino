@@ -9,6 +9,8 @@
  * the main operation is never blocked by a missing key.
  */
 
+import { escapeHtml } from "./htmlUtils";
+
 // ---------------------------------------------------------------------------
 // Pure logic (testable without Convex or Resend)
 // ---------------------------------------------------------------------------
@@ -73,12 +75,7 @@ async function sendAdminAlert(subject: string, body: string): Promise<void> {
   }
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
+// escapeHtml imported from ./htmlUtils
 
 // ---------------------------------------------------------------------------
 // Named alert senders

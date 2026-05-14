@@ -7,13 +7,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, internalMutation, internalQuery } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
-
-const MAX_CV_BYTES = 10 * 1024 * 1024; // 10 MB
-
-const ALLOWED_CONTENT_TYPES = new Set([
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-]);
+import { validateCvUpload } from "./lib/fileValidation";
 
 // ---------------------------------------------------------------------------
 // _applyParsedCv — internal: write Claude-extracted fields onto a profile
@@ -131,20 +125,13 @@ export const saveCv = mutation({
       throw new ConvexError({ code: "NOT_FOUND", message: "Uploaded file not found." });
     }
 
-    const contentType = metadata.contentType ?? "";
-    if (!ALLOWED_CONTENT_TYPES.has(contentType)) {
+    try {
+      validateCvUpload(metadata.size, metadata.contentType ?? "");
+    } catch (err: unknown) {
       await ctx.storage.delete(storageId);
       throw new ConvexError({
         code: "VALIDATION",
-        message: "Only PDF and DOCX files are accepted.",
-      });
-    }
-
-    if (metadata.size > MAX_CV_BYTES) {
-      await ctx.storage.delete(storageId);
-      throw new ConvexError({
-        code: "VALIDATION",
-        message: "File exceeds the 10 MB limit.",
+        message: err instanceof Error ? err.message : "File validation failed.",
       });
     }
 

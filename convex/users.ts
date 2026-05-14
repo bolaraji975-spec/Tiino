@@ -7,6 +7,12 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import {
+  validateSalaryRange,
+  validateRoleVariationCount,
+  validateNoEmptyStrings,
+  ValidationError,
+} from "./lib/inputValidation";
 
 // ---------------------------------------------------------------------------
 // getCurrentProfile
@@ -81,14 +87,12 @@ export const updateProfile = mutation({
       throw new ConvexError({ code: "VALIDATION", message: "Location is required." });
     }
 
-    if (
-      args.salaryMin !== undefined &&
-      args.salaryMax !== undefined &&
-      args.salaryMin > args.salaryMax
-    ) {
+    try {
+      validateSalaryRange(args.salaryMin, args.salaryMax);
+    } catch (err: unknown) {
       throw new ConvexError({
         code: "VALIDATION",
-        message: "Minimum salary cannot exceed maximum salary.",
+        message: err instanceof Error ? err.message : "Invalid salary range.",
       });
     }
 
@@ -128,6 +132,17 @@ export const updateRoleVariations = mutation({
 
     if (!profile) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Profile not found." });
+    }
+
+    try {
+      validateRoleVariationCount(exact, adjacent);
+      validateNoEmptyStrings(exact, "exact variations");
+      validateNoEmptyStrings(adjacent, "adjacent variations");
+    } catch (err: unknown) {
+      throw new ConvexError({
+        code: "VALIDATION",
+        message: err instanceof ValidationError ? err.message : "Invalid role variations.",
+      });
     }
 
     await ctx.db.patch(profile._id, {
