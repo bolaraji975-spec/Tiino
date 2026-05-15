@@ -11,6 +11,7 @@
 import type * as applications_buildCvDocx from "../applications/buildCvDocx.js";
 import type * as applications_generate from "../applications/generate.js";
 import type * as applications_mutations from "../applications/mutations.js";
+import type * as applications_queries from "../applications/queries.js";
 import type * as auth from "../auth.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
@@ -61,6 +62,7 @@ declare const fullApi: ApiFromModules<{
   "applications/buildCvDocx": typeof applications_buildCvDocx;
   "applications/generate": typeof applications_generate;
   "applications/mutations": typeof applications_mutations;
+  "applications/queries": typeof applications_queries;
   auth: typeof auth;
   crons: typeof crons;
   http: typeof http;
