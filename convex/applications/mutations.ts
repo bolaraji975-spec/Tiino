@@ -1,9 +1,10 @@
 /**
  * applications/mutations.ts — tracker mutations.
  *
- * saveJob:   idempotent — creates a "saved" application record for the current
- *            user and job, or returns the existing one. Free users capped at 3.
- * unsaveJob: removes a "saved"-stage application. No-op if not found or past saved.
+ * saveJob:                idempotent save; free users capped at 3.
+ * unsaveJob:              removes a saved-stage application.
+ * advanceApplicationStage: moves an application forward through the tracker
+ *                          pipeline, appending to stageHistory.
  */
 
 import { ConvexError, v } from "convex/values";
@@ -189,5 +190,103 @@ export const _setDocxFileIds = internalMutation({
   },
   handler: async (ctx, { applicationId, cvFileId, coverLetterFileId }) => {
     await ctx.db.patch(applicationId, { cvFileId, coverLetterFileId });
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Stage-transition helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Valid forward transitions keyed by current stage.
+ * "closed" is a terminal state — no further transitions.
+ * Any non-closed stage can move to "closed" (rejected / withdrawn).
+ */
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  saved:                ["cv_generated", "applied", "closed"],
+  cv_generated:         ["applied", "closed"],
+  applied:              ["acknowledged", "closed"],
+  acknowledged:         ["interview_scheduled", "closed"],
+  interview_scheduled:  ["interview_done", "closed"],
+  interview_done:       ["offer_received", "closed"],
+  offer_received:       ["closed"],
+  closed:               [],
+};
+
+// ---------------------------------------------------------------------------
+// advanceApplicationStage
+// ---------------------------------------------------------------------------
+
+/**
+ * Moves an application to the next stage in the tracker pipeline.
+ *
+ * Rules:
+ *   – Only the owning user can advance their own application.
+ *   – Only transitions listed in VALID_TRANSITIONS are permitted.
+ *   – Transitioning to "closed" requires an outcome.
+ *   – Each call appends a { stage, at } entry to stageHistory.
+ */
+export const advanceApplicationStage = mutation({
+  args: {
+    applicationId: v.id("applications"),
+    toStage: v.union(
+      v.literal("cv_generated"),
+      v.literal("applied"),
+      v.literal("acknowledged"),
+      v.literal("interview_scheduled"),
+      v.literal("interview_done"),
+      v.literal("offer_received"),
+      v.literal("closed"),
+    ),
+    outcome: v.optional(
+      v.union(
+        v.literal("offer_accepted"),
+        v.literal("offer_declined"),
+        v.literal("rejected"),
+        v.literal("ghosted"),
+        v.literal("withdrawn"),
+      ),
+    ),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ code: "UNAUTHORIZED", message: "Not authenticated." });
+    }
+
+    const app = await ctx.db.get(args.applicationId);
+    if (!app || app.userId !== userId) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "Application not found." });
+    }
+
+    const allowed = VALID_TRANSITIONS[app.stage] ?? [];
+    if (!allowed.includes(args.toStage)) {
+      throw new ConvexError({
+        code: "INVALID_TRANSITION",
+        message: `Cannot move from "${app.stage}" to "${args.toStage}". Check the allowed transitions.`,
+      });
+    }
+
+    if (args.toStage === "closed" && !args.outcome) {
+      throw new ConvexError({
+        code: "VALIDATION",
+        message: "An outcome is required when closing an application.",
+      });
+    }
+
+    await ctx.db.patch(args.applicationId, {
+      stage: args.toStage,
+      stageHistory: [
+        ...app.stageHistory,
+        { stage: args.toStage, at: Date.now() },
+      ],
+      ...(args.outcome !== undefined ? { outcome: args.outcome } : {}),
+      ...(args.notes !== undefined && args.notes.trim() !== ""
+        ? { notes: args.notes.trim() }
+        : {}),
+    });
+
+    return args.applicationId;
   },
 });
