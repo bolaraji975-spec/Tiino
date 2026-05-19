@@ -19,6 +19,7 @@
 import { useQuery, useMutation } from "convex/react";
 import { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { CompanyLogo } from "@/components/CompanyLogo";
@@ -204,11 +205,10 @@ function JobCard({ job, isPro, isSaved, onSave, onUnsave }: JobCardProps) {
         background: "rgba(255,255,255,0.03)",
         border: "1px solid rgba(255,255,255,0.08)",
         borderRadius: 10,
-        padding: "16px 18px",
         display: "flex",
-        alignItems: "flex-start",
-        gap: 14,
+        alignItems: "stretch",
         transition: "border-color 0.15s",
+        position: "relative",
       }}
       onMouseEnter={(e) =>
         ((e.currentTarget as HTMLDivElement).style.borderColor = "rgba(27,170,193,0.25)")
@@ -217,40 +217,59 @@ function JobCard({ job, isPro, isSaved, onSave, onUnsave }: JobCardProps) {
         ((e.currentTarget as HTMLDivElement).style.borderColor = "rgba(255,255,255,0.08)")
       }
     >
-      <CompanyLogo company={job.company} size={38} />
+      {/* Clickable body — navigates to detail page */}
+      <Link
+        href={`/jobs/${job._id}`}
+        style={{
+          flex: 1,
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 14,
+          padding: "16px 18px",
+          textDecoration: "none",
+          minWidth: 0,
+        }}
+      >
+        <CompanyLogo company={job.company} size={38} />
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-          <span
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: "rgba(255,255,255,0.90)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {job.title}
-          </span>
-          <ScoreBand band={job.sponsorshipBand} score={job.sponsorshipScore} showScore={isPro} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+            <span
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: "rgba(255,255,255,0.90)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {job.title}
+            </span>
+            <ScoreBand band={job.sponsorshipBand} score={job.sponsorshipScore} showScore={isPro} />
+          </div>
+
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", marginBottom: 4 }}>
+            {job.company} · {job.location} · {age}
+          </div>
+
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.40)" }}>
+            {[job.isAgency ? "Agency" : "Direct hire", salary].filter(Boolean).join(" · ")}
+          </div>
         </div>
+      </Link>
 
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", marginBottom: 4 }}>
-          {job.company} · {job.location} · {age}
-        </div>
-
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.40)" }}>
-          {[job.isAgency ? "Agency" : "Direct hire", salary].filter(Boolean).join(" · ")}
-        </div>
-      </div>
-
-      <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+      {/* Action buttons — outside the link, intercept clicks */}
+      <div
+        style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0, padding: "16px 18px 16px 0" }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <SaveButton isSaved={isSaved} onSave={onSave} onUnsave={onUnsave} />
         <a
           href={applyUrl}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
           style={{
             display: "inline-flex",
             alignItems: "center",

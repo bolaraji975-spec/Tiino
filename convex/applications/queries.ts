@@ -1,11 +1,13 @@
 /**
  * applications/queries.ts
  *
- * listForUser: returns all applications for the authenticated user,
- * joined with job details, enriched with display helpers (logo initials,
- * days since applied, stats).
+ * listForUser:      returns all applications for the authenticated user,
+ *                   joined with job details, enriched with display helpers.
+ * getDownloadUrls:  converts stored cvFileId / coverLetterFileId to temporary
+ *                   signed download URLs for the authenticated owner.
  */
 
+import { v } from "convex/values";
 import { query } from "../_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { getInitials, getInitialsColor } from "../lib/companyLogo";
@@ -74,5 +76,34 @@ export const listForUser = query({
     );
 
     return results.filter(<T>(x: T | null): x is T => x !== null);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// getDownloadUrls
+// ---------------------------------------------------------------------------
+
+/**
+ * Converts an application's stored cvFileId and coverLetterFileId into
+ * temporary signed download URLs.  Only the owning user may call this.
+ * Returns null if the user is not authenticated or does not own the application.
+ */
+export const getDownloadUrls = query({
+  args: { applicationId: v.id("applications") },
+  handler: async (ctx, { applicationId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+
+    const app = await ctx.db.get(applicationId);
+    if (!app || app.userId !== userId) return null;
+
+    const cvUrl = app.cvFileId
+      ? await ctx.storage.getUrl(app.cvFileId)
+      : null;
+    const coverLetterUrl = app.coverLetterFileId
+      ? await ctx.storage.getUrl(app.coverLetterFileId)
+      : null;
+
+    return { cvUrl, coverLetterUrl };
   },
 });

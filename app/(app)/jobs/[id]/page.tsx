@@ -4,21 +4,24 @@
  * Job detail page — /jobs/[id]
  *
  * Layout (two-column within scrollable main):
- *   Topbar  ← Back | job title @ company | Save  Generate CV  Apply →
+ *   Topbar  ← Back | job title @ company | Save  Apply →
  *   ─────────────────────────────────────────────────────────────────
  *   Left (2/3)          │  Right (1/3)
  *   ───────────────────  │  ────────────────────────
- *   Job header           │  Sponsorship score card
- *   About this role      │    band pill always visible
- *   (full description)   │    signal breakdown (Pro only)
+ *   Job header           │  CV generation panel
+ *   About this role      │    idle / generating / success / error / rate-limited
+ *   (full description)   │
+ *                        │  Sponsorship score card
+ *                        │    band pill always visible
+ *                        │    signal breakdown (Pro only)
  *                        │    Upgrade CTA (free users)
  *                        │
  *                        │  Employer card
  *                        │    UKVI status, rating, route
  */
 
-import { use, useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { use, useState, useEffect, useRef } from "react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -85,6 +88,26 @@ const SIGNAL_LABELS: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// CV generation state machine
+// ---------------------------------------------------------------------------
+
+const PROGRESS_STEPS = [
+  "Reading job description…",
+  "Matching your experience…",
+  "Writing tailored bullets…",
+  "Checking for accuracy…",
+] as const;
+
+type CvGenState =
+  | { status: "idle" }
+  | { status: "no_cv" }
+  | { status: "generating"; step: number }
+  | { status: "success"; applicationId: string; fromCache: boolean }
+  | { status: "error"; message: string }
+  | { status: "rate_limited_free" }
+  | { status: "rate_limited_pro" };
+
+// ---------------------------------------------------------------------------
 // Section heading
 // ---------------------------------------------------------------------------
 
@@ -131,7 +154,6 @@ function SignalRow({ signal, weight, matched }: SignalRowProps) {
         opacity: matched ? 1 : 0.38,
       }}
     >
-      {/* Tick / cross */}
       <div
         style={{
           width: 16,
@@ -194,6 +216,722 @@ function SignalRow({ signal, weight, matched }: SignalRowProps) {
 }
 
 // ---------------------------------------------------------------------------
+// CV generation panel
+// ---------------------------------------------------------------------------
+
+interface CvGenerationPanelProps {
+  jobId: Id<"jobs">;
+  companyName: string;
+  isPro: boolean;
+}
+
+function CvGenerationPanel({ jobId, companyName, isPro }: CvGenerationPanelProps) {
+  const [cvGenState, setCvGenState] = useState<CvGenState>({ status: "idle" });
+  const [applicationId, setApplicationId] = useState<Id<"applications"> | null>(null);
+  const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const generateApplication = useAction(api.applications.generate.generateApplication);
+  const buildCvDocx = useAction(api.applications.buildCvDocx.buildCvDocx);
+
+  // Reactive download URLs — updates after buildCvDocx writes file IDs
+  const downloadUrls = useQuery(
+    api.applications.queries.getDownloadUrls,
+    applicationId ? { applicationId } : "skip",
+  );
+
+  // Clean up interval on unmount
+  useEffect(() => {
+    return () => {
+      if (stepTimerRef.current) clearInterval(stepTimerRef.current);
+    };
+  }, []);
+
+  function startProgressAnimation() {
+    let step = 0;
+    setCvGenState({ status: "generating", step: 0 });
+    stepTimerRef.current = setInterval(() => {
+      step += 1;
+      if (step < PROGRESS_STEPS.length - 1) {
+        setCvGenState({ status: "generating", step });
+      } else {
+        if (stepTimerRef.current) clearInterval(stepTimerRef.current);
+      }
+    }, 1800);
+  }
+
+  async function handleGenerate() {
+    if (stepTimerRef.current) clearInterval(stepTimerRef.current);
+    startProgressAnimation();
+
+    try {
+      const result = await generateApplication({ jobId });
+
+      // Advance to final step while building docx
+      if (stepTimerRef.current) clearInterval(stepTimerRef.current);
+      setCvGenState({ status: "generating", step: PROGRESS_STEPS.length - 1 });
+
+      await buildCvDocx({ applicationId: result.applicationId as Id<"applications"> });
+
+      setApplicationId(result.applicationId as Id<"applications">);
+      setCvGenState({
+        status: "success",
+        applicationId: result.applicationId,
+        fromCache: result.fromCache,
+      });
+    } catch (err: unknown) {
+      if (stepTimerRef.current) clearInterval(stepTimerRef.current);
+      const data = (err as { data?: { code?: string; message?: string } }).data;
+      if (data?.code === "UPGRADE_REQUIRED") {
+        // Distinguish free vs pro based on isPro flag
+        setCvGenState(isPro ? { status: "rate_limited_pro" } : { status: "rate_limited_free" });
+      } else if (data?.code === "NO_CV_UPLOADED" || data?.message?.includes("no CV") || data?.message?.includes("cvFileId")) {
+        setCvGenState({ status: "no_cv" });
+      } else {
+        setCvGenState({
+          status: "error",
+          message: data?.message ?? "Something went wrong. Please try again.",
+        });
+      }
+    }
+  }
+
+  // ── Render states ────────────────────────────────────────────────────────
+
+  const cardStyle: React.CSSProperties = {
+    background: "rgba(255,255,255,0.02)",
+    border: "1px solid rgba(255,255,255,0.07)",
+    borderRadius: 8,
+    padding: "16px 18px",
+  };
+
+  // Idle state
+  if (cvGenState.status === "idle") {
+    return (
+      <div>
+        <SectionHeading>Tailored CV</SectionHeading>
+        <div style={cardStyle}>
+          <div
+            style={{
+              fontSize: 12,
+              color: "rgba(255,255,255,0.50)",
+              lineHeight: 1.55,
+              marginBottom: 14,
+            }}
+          >
+            Generate a CV and cover letter tailored to this specific role at {companyName}.
+          </div>
+          <button
+            onClick={handleGenerate}
+            style={{
+              width: "100%",
+              fontSize: 12,
+              fontWeight: 600,
+              padding: "9px 14px",
+              borderRadius: 0,
+              border: "1px solid rgba(27,170,193,0.35)",
+              background: "rgba(27,170,193,0.10)",
+              color: "#1BAAC1",
+              cursor: "pointer",
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              textAlign: "center",
+            }}
+          >
+            Generate tailored CV
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // No CV uploaded state
+  if (cvGenState.status === "no_cv") {
+    return (
+      <div>
+        <SectionHeading>Tailored CV</SectionHeading>
+        <div style={cardStyle}>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: "rgba(255,255,255,0.75)",
+              marginBottom: 6,
+            }}
+          >
+            Upload your CV first
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: "rgba(255,255,255,0.45)",
+              lineHeight: 1.55,
+              marginBottom: 14,
+            }}
+          >
+            To generate a tailored version, upload your current CV in settings first.
+          </div>
+          <a
+            href="/onboarding"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              fontSize: 11,
+              fontWeight: 600,
+              padding: "7px 12px",
+              borderRadius: 0,
+              background: "#1BAAC1",
+              color: "#0a2828",
+              textDecoration: "none",
+            }}
+          >
+            Upload CV →
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  // Generating state
+  if (cvGenState.status === "generating") {
+    const { step } = cvGenState;
+    return (
+      <div>
+        <SectionHeading>Tailored CV</SectionHeading>
+        <div style={cardStyle}>
+          <div
+            style={{
+              fontFamily: "'DM Mono', monospace",
+              fontSize: 10,
+              letterSpacing: "1px",
+              color: "#1BAAC1",
+              marginBottom: 14,
+              textTransform: "uppercase",
+            }}
+          >
+            Generating…
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {PROGRESS_STEPS.map((label, i) => {
+              const isDone = i < step;
+              const isActive = i === step;
+              return (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    opacity: isDone ? 0.55 : isActive ? 1 : 0.25,
+                    transition: "opacity 0.3s",
+                  }}
+                >
+                  {/* Step indicator */}
+                  <div
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: "50%",
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: isDone
+                        ? "rgba(74,222,128,0.15)"
+                        : isActive
+                        ? "rgba(27,170,193,0.20)"
+                        : "rgba(255,255,255,0.05)",
+                      border: `1px solid ${isDone ? "rgba(74,222,128,0.30)" : isActive ? "rgba(27,170,193,0.40)" : "rgba(255,255,255,0.10)"}`,
+                    }}
+                  >
+                    {isDone ? (
+                      <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                        <path d="M1.5 4l2 2 3-3" stroke="#4ade80" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : isActive ? (
+                      <div
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: "50%",
+                          background: "#1BAAC1",
+                          animation: "pulse 1s ease-in-out infinite",
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 4,
+                          height: 4,
+                          borderRadius: "50%",
+                          background: "rgba(255,255,255,0.20)",
+                        }}
+                      />
+                    )}
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: isDone
+                        ? "rgba(255,255,255,0.50)"
+                        : isActive
+                        ? "rgba(255,255,255,0.85)"
+                        : "rgba(255,255,255,0.30)",
+                      fontWeight: isActive ? 600 : 400,
+                    }}
+                  >
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Success / cached state
+  if (cvGenState.status === "success") {
+    const cvUrl = downloadUrls?.cvUrl ?? null;
+    const coverLetterUrl = downloadUrls?.coverLetterUrl ?? null;
+
+    return (
+      <div>
+        <SectionHeading>Tailored CV</SectionHeading>
+        <div style={cardStyle}>
+          {/* Header row */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "rgba(255,255,255,0.85)",
+                  marginBottom: 2,
+                }}
+              >
+                Your CV is ready.
+              </div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.40)" }}>
+                Review it before downloading.
+              </div>
+            </div>
+            {cvGenState.fromCache && (
+              <span
+                style={{
+                  fontFamily: "'DM Mono', monospace",
+                  fontSize: 9,
+                  letterSpacing: "1px",
+                  textTransform: "uppercase",
+                  color: "rgba(255,255,255,0.35)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  borderRadius: 2,
+                  padding: "2px 6px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Cached
+              </span>
+            )}
+          </div>
+
+          {/* Download buttons */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+            {cvUrl ? (
+              <a
+                href={cvUrl}
+                download
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  padding: "8px 14px",
+                  borderRadius: 0,
+                  background: "#1BAAC1",
+                  color: "#0a2828",
+                  textDecoration: "none",
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path d="M6 1v7M3 5l3 3 3-3M2 10h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Download CV (.docx)
+              </a>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 12,
+                  color: "rgba(255,255,255,0.35)",
+                  padding: "8px 14px",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
+                Preparing CV…
+              </div>
+            )}
+
+            {coverLetterUrl ? (
+              <a
+                href={coverLetterUrl}
+                download
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  padding: "8px 14px",
+                  borderRadius: 0,
+                  border: "1px solid rgba(27,170,193,0.30)",
+                  background: "rgba(27,170,193,0.08)",
+                  color: "#1BAAC1",
+                  textDecoration: "none",
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path d="M6 1v7M3 5l3 3 3-3M2 10h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Download cover letter (.docx)
+              </a>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 12,
+                  color: "rgba(255,255,255,0.35)",
+                  padding: "8px 14px",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
+                Preparing cover letter…
+              </div>
+            )}
+          </div>
+
+          {/* Regenerate */}
+          <button
+            onClick={handleGenerate}
+            style={{
+              width: "100%",
+              fontSize: 11,
+              fontWeight: 500,
+              padding: "6px 14px",
+              borderRadius: 0,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "none",
+              color: "rgba(255,255,255,0.40)",
+              cursor: "pointer",
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              textAlign: "center",
+            }}
+          >
+            Regenerate
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (cvGenState.status === "error") {
+    return (
+      <div>
+        <SectionHeading>Tailored CV</SectionHeading>
+        <div style={cardStyle}>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: "rgba(255,107,107,0.85)",
+              marginBottom: 6,
+            }}
+          >
+            Generation failed
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: "rgba(255,255,255,0.45)",
+              lineHeight: 1.55,
+              marginBottom: 14,
+            }}
+          >
+            {cvGenState.message}
+          </div>
+          <button
+            onClick={handleGenerate}
+            style={{
+              width: "100%",
+              fontSize: 12,
+              fontWeight: 600,
+              padding: "9px 14px",
+              borderRadius: 0,
+              border: "1px solid rgba(27,170,193,0.35)",
+              background: "rgba(27,170,193,0.10)",
+              color: "#1BAAC1",
+              cursor: "pointer",
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              textAlign: "center",
+            }}
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Rate limited — free plan
+  if (cvGenState.status === "rate_limited_free") {
+    return (
+      <div>
+        <SectionHeading>Tailored CV</SectionHeading>
+        <div style={cardStyle}>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: "rgba(255,255,255,0.75)",
+              marginBottom: 6,
+            }}
+          >
+            Monthly limit reached
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: "rgba(255,255,255,0.45)",
+              lineHeight: 1.55,
+              marginBottom: 14,
+            }}
+          >
+            {"You've used your free CV this month. Upgrade to Pro for 20 per month, or buy a single credit."}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <a
+              href="/settings/upgrade"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 12,
+                fontWeight: 600,
+                padding: "8px 14px",
+                borderRadius: 0,
+                background: "#1BAAC1",
+                color: "#0a2828",
+                textDecoration: "none",
+              }}
+            >
+              Upgrade to Pro — £3.99/mo
+            </a>
+            <a
+              href="/settings/upgrade?plan=pay_per_cv"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 12,
+                fontWeight: 600,
+                padding: "8px 14px",
+                borderRadius: 0,
+                border: "1px solid rgba(27,170,193,0.30)",
+                background: "rgba(27,170,193,0.08)",
+                color: "#1BAAC1",
+                textDecoration: "none",
+              }}
+            >
+              Buy a single credit — £1.99
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Rate limited — pro plan
+  if (cvGenState.status === "rate_limited_pro") {
+    return (
+      <div>
+        <SectionHeading>Tailored CV</SectionHeading>
+        <div style={cardStyle}>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: "rgba(255,255,255,0.75)",
+              marginBottom: 6,
+            }}
+          >
+            Monthly limit reached
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: "rgba(255,255,255,0.45)",
+              lineHeight: 1.55,
+              marginBottom: 14,
+            }}
+          >
+            {"You've reached your 20 CV limit this month. It resets on the 1st. You can also buy a one-off credit."}
+          </div>
+          <a
+            href="/settings/upgrade?plan=pay_per_cv"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 12,
+              fontWeight: 600,
+              padding: "8px 14px",
+              borderRadius: 0,
+              border: "1px solid rgba(27,170,193,0.30)",
+              background: "rgba(27,170,193,0.08)",
+              color: "#1BAAC1",
+              textDecoration: "none",
+            }}
+          >
+            Buy a single credit — £1.99
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Apply confirmation modal
+// ---------------------------------------------------------------------------
+
+interface ApplyModalProps {
+  company: string;
+  applyUrl: string;
+  onClose: () => void;
+}
+
+function ApplyModal({ company, applyUrl, onClose }: ApplyModalProps) {
+  // Close on Escape
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  function proceed() {
+    window.open(applyUrl, "_blank", "noopener,noreferrer");
+    onClose();
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.65)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 50,
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "#061f1f",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: 10,
+          padding: "28px 28px 22px",
+          maxWidth: 380,
+          width: "calc(100% - 32px)",
+          boxShadow: "0 24px 48px rgba(0,0,0,0.50)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          style={{
+            fontSize: 15,
+            fontWeight: 700,
+            color: "rgba(255,255,255,0.90)",
+            marginBottom: 8,
+            letterSpacing: "-0.2px",
+          }}
+        >
+          Leaving Tino
+        </div>
+        <div
+          style={{
+            fontSize: 13,
+            color: "rgba(255,255,255,0.50)",
+            lineHeight: 1.6,
+            marginBottom: 22,
+          }}
+        >
+          This link goes to {company}&rsquo;s site. We don&rsquo;t control their application process.
+          Log it in your tracker when you&rsquo;re done.
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={proceed}
+            style={{
+              flex: 1,
+              fontSize: 12,
+              fontWeight: 700,
+              padding: "9px 16px",
+              borderRadius: 0,
+              background: "#1BAAC1",
+              color: "#0a2828",
+              border: "none",
+              cursor: "pointer",
+              fontFamily: "inherit",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Continue to employer site →
+          </button>
+          <button
+            onClick={onClose}
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              padding: "9px 14px",
+              borderRadius: 0,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "none",
+              color: "rgba(255,255,255,0.55)",
+              cursor: "pointer",
+              fontFamily: "inherit",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Stay on Tino
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page inner (receives resolved id)
 // ---------------------------------------------------------------------------
 
@@ -205,6 +943,7 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
   const router = useRouter();
   const [pendingSave, setPendingSave] = useState(false);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+  const [showApplyModal, setShowApplyModal] = useState(false);
 
   const result = useQuery(api.jobs.queries.getJobById, {
     id: id as Id<"jobs">,
@@ -229,10 +968,8 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
       } else {
         await unsaveJobMutation({ jobId: result.job._id });
       }
-      // Let query take over; clear optimistic state
       setOptimisticSaved(null);
     } catch (err: unknown) {
-      // Revert optimistic flip
       setOptimisticSaved(!next);
       const code =
         err instanceof Error
@@ -305,7 +1042,6 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
   const sourceLabel = SOURCE_LABELS[job.sourceIds[0]?.source ?? ""] ?? "";
   const description = stripHtml(job.description);
 
-  // Sponsor rating short form: extract "A-rated" or "B-rated"
   const sponsorRating = sponsor?.rating
     ? sponsor.rating.match(/[AB]-rat/i)?.[0]?.toUpperCase() ?? null
     : null;
@@ -322,6 +1058,15 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
         fontFamily: "'Plus Jakarta Sans', sans-serif",
       }}
     >
+      {/* ── Apply modal ─────────────────────────────────────────────────── */}
+      {showApplyModal && (
+        <ApplyModal
+          company={job.company}
+          applyUrl={applyUrl}
+          onClose={() => setShowApplyModal(false)}
+        />
+      )}
+
       {/* ── Topbar ──────────────────────────────────────────────────────── */}
       <div
         style={{
@@ -415,44 +1160,23 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
             {pendingSave ? "…" : isSaved ? "Saved" : "Save"}
           </button>
 
-          <a
-            href={`/applications/new?jobId=${job._id}`}
+          <button
+            onClick={() => setShowApplyModal(true)}
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              fontSize: 11,
-              fontWeight: 600,
-              padding: "6px 12px",
-              borderRadius: 0,
-              border: "1px solid rgba(27,170,193,0.30)",
-              background: "rgba(27,170,193,0.08)",
-              color: "#1BAAC1",
-              textDecoration: "none",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Generate tailored CV
-          </a>
-
-          <a
-            href={applyUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
               fontSize: 11,
               fontWeight: 600,
               padding: "6px 12px",
               borderRadius: 0,
               background: "#1BAAC1",
               color: "#0a2828",
-              textDecoration: "none",
+              border: "none",
+              cursor: "pointer",
+              fontFamily: "inherit",
               whiteSpace: "nowrap",
             }}
           >
             Apply →
-          </a>
+          </button>
         </div>
       </div>
 
@@ -656,8 +1380,15 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
             </div>
           </div>
 
-          {/* ── RIGHT: Score + Employer ───────────────────────────────── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* ── RIGHT: CV panel + Score + Employer ───────────────────── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+            {/* CV generation panel */}
+            <CvGenerationPanel
+              jobId={job._id}
+              companyName={job.company}
+              isPro={isPro}
+            />
 
             {/* Score card */}
             <div>
@@ -670,7 +1401,6 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
                   padding: "16px 18px",
                 }}
               >
-                {/* Band pill + numeric score */}
                 <div
                   style={{
                     display: "flex",
@@ -699,7 +1429,6 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
                   )}
                 </div>
 
-                {/* Signal breakdown — Pro only */}
                 {isPro ? (
                   <div>
                     {job.scoreBreakdown.map((s, i) => (
@@ -775,7 +1504,6 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
                   gap: 12,
                 }}
               >
-                {/* Company name row */}
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <CompanyLogo company={job.company} size={32} />
                   <div>
@@ -802,14 +1530,8 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
                   </div>
                 </div>
 
-                <div
-                  style={{
-                    height: 1,
-                    background: "rgba(255,255,255,0.06)",
-                  }}
-                />
+                <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
 
-                {/* UKVI status */}
                 <div>
                   <EmployerRow
                     label="UKVI Sponsor Register"
@@ -843,7 +1565,6 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
                   )}
                 </div>
 
-                {/* Explicit sponsorship signal */}
                 {job.explicit !== undefined && (
                   <div
                     style={{
