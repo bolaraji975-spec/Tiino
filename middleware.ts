@@ -4,8 +4,17 @@ import {
   nextjsMiddlewareRedirect,
 } from "@convex-dev/auth/nextjs/server";
 
-const isAuthRoute = createRouteMatcher(["/login", "/reset-password", "/verify-email"]);
-const isProtectedRoute = createRouteMatcher(["/jobs(.*)", "/applications(.*)", "/settings(.*)", "/onboarding(.*)"]);
+// Only /login bounces authenticated users to /jobs.
+// /verify-email and /reset-password are always public — never redirect away
+// from them so that users can use them regardless of session state.
+const isLoginRoute = createRouteMatcher(["/login"]);
+const isProtectedRoute = createRouteMatcher([
+  "/jobs(.*)",
+  "/applications(.*)",
+  "/settings(.*)",
+  "/onboarding(.*)",
+  "/tracker(.*)",
+]);
 
 export default convexAuthNextjsMiddleware(async (request, { convexAuth }) => {
   // getToken() reads the JWT cookie locally — no Convex network call.
@@ -16,8 +25,8 @@ export default convexAuthNextjsMiddleware(async (request, { convexAuth }) => {
   const token = await convexAuth.getToken();
   const isSignedIn = token !== undefined;
 
-  // Redirect signed-in users away from the login page
-  if (isAuthRoute(request) && isSignedIn) {
+  // Redirect signed-in users away from /login only
+  if (isLoginRoute(request) && isSignedIn) {
     return nextjsMiddlewareRedirect(request, "/jobs");
   }
 

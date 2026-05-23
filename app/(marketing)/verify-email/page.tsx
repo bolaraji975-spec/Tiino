@@ -1,41 +1,58 @@
 "use client";
 
+/**
+ * /verify-email
+ *
+ * This page handles two scenarios:
+ *  1. User clicked a verification link from email (?code=...) — auto-verifies
+ *     and redirects to /jobs.
+ *  2. User navigated here directly or is already signed in — shows a
+ *     "Go to jobs" link so they can get back into the app immediately.
+ *
+ * Email verification is NOT required for app access (MVP decision).
+ * Verifying email is useful only for future password-reset flows.
+ */
+
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useQuery } from "convex/react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { api } from "@/convex/_generated/api";
 
 // ---------------------------------------------------------------------------
 // Inner component (reads search params — must be inside Suspense)
 // ---------------------------------------------------------------------------
 
-function VerifyEmailForm() {
+function VerifyEmailInner() {
   const { signIn } = useAuthActions();
   const router = useRouter();
   const searchParams = useSearchParams();
   const code = searchParams.get("code") ?? "";
 
-  // If the user already has a valid session (e.g. they re-clicked the link,
-  // or the middleware token check lagged behind hydration), skip to /jobs.
+  // If the user already has a live session, redirect immediately.
   const user = useQuery(api.users.getCurrentUser);
   useEffect(() => {
-    if (user) {
+    // Only redirect if there is no code to process. If there is a code, let
+    // the verification effect handle the redirect so the email gets confirmed.
+    if (user && !code) {
       router.replace("/jobs");
     }
-  }, [user, router]);
+  }, [user, code, router]);
 
-  type State = "verifying" | "check-email" | "resending" | "resent" | "error";
-  const [state, setState] = useState<State>(code ? "verifying" : "check-email");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  type State = "verifying" | "success" | "error" | "idle";
+  const [state, setState] = useState<State>(code ? "verifying" : "idle");
   const [errorMsg, setErrorMsg] = useState("");
 
   // Auto-verify when a code is present in the URL
   useEffect(() => {
     if (!code) return;
     signIn("password", { flow: "email-verification", code })
-      .then(() => router.replace("/onboarding"))
+      .then(() => {
+        setState("success");
+        // Small delay so the user sees the success state, then redirect
+        setTimeout(() => router.replace("/jobs"), 1500);
+      })
       .catch((err: unknown) => {
         setErrorMsg(
           err instanceof Error
@@ -44,23 +61,8 @@ function VerifyEmailForm() {
         );
         setState("error");
       });
-  }, [code, signIn, router]);
-
-  async function handleResend(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setErrorMsg("");
-    setState("resending");
-    try {
-      // Resend verification email — requires email + password for security
-      await signIn("password", { email, password, flow: "email-verification" });
-      setState("resent");
-    } catch (err: unknown) {
-      setErrorMsg(
-        err instanceof Error ? err.message : "Could not resend verification email.",
-      );
-      setState("check-email");
-    }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code]);
 
   // ── Verifying ─────────────────────────────────────────────────────────────
   if (state === "verifying") {
@@ -68,6 +70,16 @@ function VerifyEmailForm() {
       <div className="space-y-2">
         <p className="text-sm text-[#1BAAC1]">Verifying your email&hellip;</p>
         <p className="text-xs text-gray-500">You will be redirected automatically.</p>
+      </div>
+    );
+  }
+
+  // ── Success ───────────────────────────────────────────────────────────────
+  if (state === "success") {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-[#1BAAC1] font-semibold">Email verified</p>
+        <p className="text-sm text-gray-400">Redirecting you to the app&hellip;</p>
       </div>
     );
   }
@@ -80,109 +92,36 @@ function VerifyEmailForm() {
           {errorMsg}
         </p>
         <p className="text-sm text-gray-400">
-          The verification link may have expired. Request a new one below.
+          The verification link may have expired, but you can still access the app.
         </p>
-        <button
-          type="button"
-          onClick={() => { setState("check-email"); setErrorMsg(""); }}
-          className="text-xs text-[#1BAAC1] underline underline-offset-2 hover:opacity-80"
+        <Link
+          href="/jobs"
+          className="inline-block bg-[#1BAAC1] text-[#0a2828] font-semibold py-3 px-6
+                     text-sm uppercase tracking-wider hover:opacity-90 transition-opacity"
         >
-          Resend verification email
-        </button>
+          Go to jobs &rarr;
+        </Link>
       </div>
     );
   }
 
-  // ── Resent ────────────────────────────────────────────────────────────────
-  if (state === "resent") {
-    return (
-      <div className="space-y-4">
-        <p className="text-sm text-[#1BAAC1] font-semibold">Verification email sent</p>
-        <p className="text-sm text-gray-400">
-          Check your inbox for a new verification link.
-        </p>
-        <a
-          href="/login"
-          className="block text-xs text-gray-500 underline underline-offset-2 hover:text-gray-300"
-        >
-          Back to sign in
-        </a>
-      </div>
-    );
-  }
-
-  // ── Check email (no code in URL) / resending ───────────────────────────────
+  // ── Idle — no code, user navigated here directly ──────────────────────────
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <p className="text-sm text-[#1BAAC1] font-semibold">Check your email</p>
         <p className="text-sm text-gray-400">
-          We sent a verification link when you created your account. Click it to activate
-          your account and get started.
+          You do not need to verify your email to use Tino.
+          If you received a verification link, click it directly from your email client.
         </p>
       </div>
-
-      <div className="border-t border-white/10 pt-6">
-        <p className="text-xs text-gray-500 mb-4">Did not receive it? Resend below.</p>
-        <form onSubmit={handleResend} className="space-y-4">
-          {errorMsg && (
-            <p className="text-xs text-red-400 bg-red-400/10 border border-red-400/20 px-3 py-2">
-              {errorMsg}
-            </p>
-          )}
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-xs font-mono uppercase tracking-widest text-gray-400 mb-2"
-            >
-              Email address
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="w-full bg-[#0a2828] border border-[#1BAAC1]/30 text-white
-                         placeholder-gray-600 px-4 py-3 text-sm outline-none
-                         focus:border-[#1BAAC1] transition-colors"
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-xs font-mono uppercase tracking-widest text-gray-400 mb-2"
-            >
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full bg-[#0a2828] border border-[#1BAAC1]/30 text-white
-                         placeholder-gray-600 px-4 py-3 text-sm outline-none
-                         focus:border-[#1BAAC1] transition-colors"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={state === "resending"}
-            className="w-full bg-[#1BAAC1] text-[#0a2828] font-semibold py-3 px-4
-                       text-sm uppercase tracking-wider transition-opacity
-                       hover:opacity-90 disabled:opacity-50"
-          >
-            {state === "resending" ? "Sending…" : "Resend verification email"}
-          </button>
-        </form>
-      </div>
-
-      <div className="text-center">
+      <Link
+        href="/jobs"
+        className="inline-block bg-[#1BAAC1] text-[#0a2828] font-semibold py-3 px-6
+                   text-sm uppercase tracking-wider hover:opacity-90 transition-opacity"
+      >
+        Go to jobs &rarr;
+      </Link>
+      <div className="pt-2">
         <a
           href="/login"
           className="text-xs text-gray-500 underline underline-offset-2 hover:text-gray-300"
@@ -203,12 +142,12 @@ export default function VerifyEmailPage() {
     <main className="min-h-screen bg-[#021e1e] flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <p className="font-mono text-[#1BAAC1] uppercase tracking-[4px] text-sm mb-8">Tino</p>
-        <h1 className="text-2xl font-semibold text-white mb-2">Verify your email</h1>
+        <h1 className="text-2xl font-semibold text-white mb-2">Email verification</h1>
         <p className="text-sm text-gray-400 mb-8">
-          One last step before you can start finding jobs.
+          Verifying your email is optional &mdash; you can use the full app without it.
         </p>
         <Suspense fallback={<p className="text-sm text-gray-500">Loading&hellip;</p>}>
-          <VerifyEmailForm />
+          <VerifyEmailInner />
         </Suspense>
       </div>
     </main>

@@ -123,14 +123,14 @@ function LoginForm() {
 
     setLoading(true);
     try {
-      if (mode === "create") {
-        await signIn("password", { email, password, flow: "signUp" });
-        // After sign-up convex-auth sends a verification email; show the sent state
-        setState("sent");
-      } else {
-        await signIn("password", { email, password, flow: "signIn" });
-        router.replace("/jobs");
-      }
+      // Both signUp and signIn grant a session immediately.
+      // Email verification is optional (background) — it does not block access.
+      await signIn("password", {
+        email,
+        password,
+        flow: mode === "create" ? "signUp" : "signIn",
+      });
+      router.replace("/jobs");
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : "Authentication failed.");
       setState("idle");

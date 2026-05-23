@@ -22,7 +22,6 @@ import { Email } from "@convex-dev/auth/providers/Email";
 import { Password } from "@convex-dev/auth/providers/Password";
 import Google from "@auth/core/providers/google";
 import { validatePasswordRequirements } from "./lib/validatePassword";
-import { escapeHtml } from "./lib/htmlUtils";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -104,25 +103,6 @@ function magicLinkHtml(url: string): string {
   `);
 }
 
-function verifyEmailHtml(url: string, email: string): string {
-  return emailShell(`
-    <h2 style="margin-top:0;color:#f9fafb;font-size:20px;">Verify your email address</h2>
-    <p style="color:#9ca3af;line-height:1.6;">
-      You signed up for Tino with <strong style="color:#e5e7eb;">${escapeHtml(email)}</strong>.
-      Click the button below to verify your email address.
-    </p>
-    <a href="${url}"
-       style="display:inline-block;background:#1BAAC1;color:#0a2828;font-weight:700;
-              padding:12px 28px;text-decoration:none;margin:16px 0;font-size:15px;">
-      Verify email address
-    </a>
-    <p style="color:#6b7280;font-size:13px;margin-top:8px;">
-      Or copy this link into your browser:<br/>
-      <a href="${url}" style="color:#1BAAC1;word-break:break-all;">${url}</a>
-    </p>
-  `);
-}
-
 function resetPasswordHtml(url: string): string {
   return emailShell(`
     <h2 style="margin-top:0;color:#f9fafb;font-size:20px;">Reset your password</h2>
@@ -159,23 +139,6 @@ const ResendMagicLink = Email({
 });
 
 // ---------------------------------------------------------------------------
-// Email provider — email verification (used by Password provider)
-// ---------------------------------------------------------------------------
-
-const EmailVerification = Email({
-  id: "email-verification",
-  sendVerificationRequest: async ({ identifier: email, url }) => {
-    const verifyUrl = frontendUrl(url, "/verify-email");
-    await sendResendEmail(
-      email,
-      "Verify your Tino email address",
-      verifyEmailHtml(verifyUrl, email),
-      `Verify your Tino email address\n\nClick this link to verify:\n${verifyUrl}`,
-    );
-  },
-});
-
-// ---------------------------------------------------------------------------
 // Email provider — password reset (used by Password provider)
 // ---------------------------------------------------------------------------
 
@@ -196,10 +159,12 @@ const PasswordReset = Email({
 // Password provider
 // ---------------------------------------------------------------------------
 
+// Email verification is intentionally NOT required for MVP.
+// Users get a session immediately on signup; the verify-email page is
+// available for users who want to verify for password-reset purposes.
 const PasswordProvider = Password({
   validatePasswordRequirements,
   reset: PasswordReset,
-  verify: EmailVerification,
 });
 
 // ---------------------------------------------------------------------------
