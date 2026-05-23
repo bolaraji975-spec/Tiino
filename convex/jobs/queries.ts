@@ -68,12 +68,31 @@ export const getJobById = query({
       .filter((q) => q.eq(q.field("userId"), userId))
       .first();
 
+    // Profile-derived flags for the detail panel
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("byUser", (q) => q.eq("userId", userId))
+      .first();
+
+    const hasCvUploaded = !!profile?.cvFileId;
+
+    const variations: string[] = profile?.roleVariations
+      ? [...profile.roleVariations.exact, ...profile.roleVariations.adjacent]
+      : [];
+
+    const matchesProfile =
+      variations.length > 0
+        ? matchesRoleVariation(job.title, variations)
+        : false;
+
     return {
       job,
       sponsor,
       isPro,
       isSaved: application?.stage === "saved",
       applicationId: application?._id,
+      hasCvUploaded,
+      matchesProfile,
     };
   },
 });
@@ -230,6 +249,8 @@ export const listForUser = query({
       totalCount: filtered.length,
       hasMore: limit < filtered.length,
       isPro,
+      hasCvUploaded: !!profile?.cvFileId,
+      hasRoleVariations: variations.length > 0,
     };
   },
 });

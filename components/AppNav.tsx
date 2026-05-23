@@ -67,13 +67,11 @@ function IconTracker() {
   );
 }
 
-function IconDashboard() {
+function IconAccount() {
   return (
     <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
-      <rect x="1.5" y="1.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
-      <rect x="8.5" y="1.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
-      <rect x="1.5" y="8.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
-      <rect x="8.5" y="8.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <circle cx="7.5" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M2 13c0-3.038 2.462-5.5 5.5-5.5S13 9.962 13 13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
     </svg>
   );
 }
@@ -192,9 +190,9 @@ function getInitials(name?: string | null, email?: string | null): string {
 // ---------------------------------------------------------------------------
 
 const NAV_LINKS = [
-  { href: "/jobs",      label: "Jobs feed",  icon: <IconJobs /> },
-  { href: "/tracker",   label: "History",    icon: <IconTracker /> },
-  { href: "/dashboard", label: "Dashboard",  icon: <IconDashboard /> },
+  { href: "/jobs",     label: "Jobs feed", icon: <IconJobs /> },
+  { href: "/tracker",  label: "History",   icon: <IconTracker /> },
+  { href: "/settings", label: "Account",   icon: <IconAccount /> },
 ] as const;
 
 export default function AppNav() {
