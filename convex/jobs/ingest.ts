@@ -144,22 +144,28 @@ export const ingestFromSource = action({
       };
     });
 
-    // --- 2b. Extract criteria for public sector jobs via Claude Haiku ---
-    // Process in batches of 5 to avoid Anthropic 429 rate limits.
+    // --- 2b. Identify new (not-yet-in-DB) jobs before criteria extraction ---
+    // This avoids burning Anthropic quota on jobs that will be deduped away.
+    const knownHashes = await ctx.runQuery(
+      internal.jobs.ingestMutations._getExistingHashes,
+      { hashes: normalised.map((j) => j.dedupeHash) },
+    );
+    const knownSet = new Set(knownHashes);
+
+    // --- 2c. Extract criteria for NEW public sector jobs via Claude Haiku ---
+    // Process one at a time with a 500 ms gap to stay within free-tier limits.
+    // Existing jobs keep extractedCriteria: undefined (already stored in DB).
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
-    const payloads: typeof normalised[number][] & { extractedCriteria?: string[] }[] = [];
-    for (let i = 0; i < normalised.length; i += 5) {
-      const batch = normalised.slice(i, i + 5);
-      const extracted = await Promise.all(
-        batch.map(async (job) => {
-          if (!job.isPublicSector || !anthropicKey) {
-            return { ...job, extractedCriteria: undefined };
-          }
-          const criteria = await extractCriteria(job.description, anthropicKey);
-          return { ...job, extractedCriteria: criteria.length > 0 ? criteria : undefined };
-        }),
-      );
-      payloads.push(...extracted);
+    const payloads: (typeof normalised[number] & { extractedCriteria?: string[] })[] = [];
+    for (const job of normalised) {
+      if (job.isPublicSector && anthropicKey && !knownSet.has(job.dedupeHash)) {
+        const criteria = await extractCriteria(job.description, anthropicKey);
+        payloads.push({ ...job, extractedCriteria: criteria.length > 0 ? criteria : undefined });
+        // Small delay to respect Anthropic free-tier rate limits (~2 req/s)
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      } else {
+        payloads.push({ ...job, extractedCriteria: undefined });
+      }
     }
 
     // --- 3. Batch upsert via mutations ---

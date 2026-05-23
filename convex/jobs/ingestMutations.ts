@@ -13,7 +13,7 @@
  *   Clamped 0–100.
  */
 
-import { internalMutation } from "../_generated/server";
+import { internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 
@@ -96,6 +96,25 @@ const jobInputValidator = v.object({
 // ---------------------------------------------------------------------------
 // Internal mutation
 // ---------------------------------------------------------------------------
+
+/**
+ * Returns the subset of the supplied dedupe hashes that already exist in the DB.
+ * Used by ingest.ts to skip Claude criteria extraction for known-duplicate jobs.
+ */
+export const _getExistingHashes = internalQuery({
+  args: { hashes: v.array(v.string()) },
+  handler: async (ctx, { hashes }): Promise<string[]> => {
+    const found: string[] = [];
+    for (const hash of hashes) {
+      const exists = await ctx.db
+        .query("jobs")
+        .withIndex("byDedupeHash", (q) => q.eq("dedupeHash", hash))
+        .first();
+      if (exists) found.push(hash);
+    }
+    return found;
+  },
+});
 
 export const _upsertBatch = internalMutation({
   args: { jobs: v.array(jobInputValidator) },
