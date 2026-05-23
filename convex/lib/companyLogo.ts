@@ -193,13 +193,15 @@ function deriveDomain(name: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the Clearbit logo URL for a company.
+ * Returns a logo URL for a company.
  *
- * Special-cased before the override map:
- *   NHS / Trust / Foundation Trust / Hospital names → nhs.uk logo
- *   (virtually all UK Foundation Trusts and NHS Trusts are NHS organisations)
+ * Priority:
+ *   1. NHS / Trust / Foundation Trust / Hospital names → nhs.uk
+ *   2. Domain override map for known UK/global employers
+ *   3. Derived domain (rough heuristic)
  *
- * Then falls through to the domain override map, then derives a domain.
+ * Uses Google's favicon service (reliable, no API key required).
+ * The CompanyLogo component handles onError → colored initials fallback.
  */
 export function getLogoUrl(companyName: string): string {
   // NHS pattern: any name containing "NHS", "Foundation Trust", standalone
@@ -211,12 +213,26 @@ export function getLogoUrl(companyName: string): string {
     /\bhospital\b/i.test(companyName) ||
     /\binfirmary\b/i.test(companyName)
   ) {
-    return "https://logo.clearbit.com/nhs.uk";
+    return faviconUrl("nhs.uk");
   }
 
   const key = normaliseForLookup(companyName);
   const domain = DOMAIN_OVERRIDES[key] ?? deriveDomain(companyName);
+  return faviconUrl(domain);
+}
+
+/**
+ * Returns a Clearbit logo URL for a known domain.
+ * Use when you already have a reliable domain (e.g. from DOMAIN_OVERRIDES).
+ * Clearbit free tier is unreliable for unknown domains — prefer faviconUrl.
+ */
+export function getClearbitUrl(domain: string): string {
   return `https://logo.clearbit.com/${domain}`;
+}
+
+/** Google favicon service — always returns an image, never 404s */
+function faviconUrl(domain: string): string {
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
 }
 
 /**
