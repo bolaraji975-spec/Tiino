@@ -1,13 +1,15 @@
 "use client";
 
 /**
- * Onboarding page — collects visa status, location, salary range, right-to-work.
+ * Onboarding page — step 1 of 3.
+ * Collects visa status, location, salary range, right-to-work.
  *
  * Guards:
- *   - Not signed in          → redirect to /login
- *   - Profile already filled → redirect to /feed  (returning user bypass)
+ *   - Not signed in             → /login
+ *   - Step 1 already done       → /onboarding/roles  (skips to role setup)
  *
- * On submit → calls updateProfile mutation → redirect to /feed.
+ * On submit → calls updateProfile mutation → redirects to /onboarding/cv
+ *             (which then leads to /onboarding/roles → /jobs).
  */
 
 import { useQuery, useMutation } from "convex/react";
@@ -56,8 +58,10 @@ export default function OnboardingPage() {
       router.replace("/login");
       return;
     }
+    // Step 1 already done — skip ahead to role setup rather than bouncing to
+    // /jobs. This lets "Set up roles →" from the feed reach /onboarding/roles.
     if (user.visaStatus !== undefined) {
-      router.replace("/jobs");
+      router.replace("/onboarding/roles");
     }
   }, [user, router]);
 

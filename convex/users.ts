@@ -125,15 +125,6 @@ export const updateRoleVariations = mutation({
       throw new ConvexError({ code: "UNAUTHORIZED", message: "Not authenticated." });
     }
 
-    const profile = await ctx.db
-      .query("profiles")
-      .withIndex("byUser", (q) => q.eq("userId", userId))
-      .first();
-
-    if (!profile) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Profile not found." });
-    }
-
     try {
       validateRoleVariationCount(exact, adjacent);
       validateNoEmptyStrings(exact, "exact variations");
@@ -145,10 +136,28 @@ export const updateRoleVariations = mutation({
       });
     }
 
-    await ctx.db.patch(profile._id, {
-      roleVariations: { exact, adjacent },
-      updatedAt: Date.now(),
-    });
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("byUser", (q) => q.eq("userId", userId))
+      .first();
+
+    if (profile) {
+      await ctx.db.patch(profile._id, {
+        roleVariations: { exact, adjacent },
+        updatedAt: Date.now(),
+      });
+    } else {
+      // Profile not yet created (user skipped or hasn't uploaded CV).
+      // Create a minimal profile so role variations can be saved.
+      await ctx.db.insert("profiles", {
+        userId,
+        skills: [],
+        qualifications: [],
+        languages: [],
+        roleVariations: { exact, adjacent },
+        updatedAt: Date.now(),
+      });
+    }
   },
 });
 

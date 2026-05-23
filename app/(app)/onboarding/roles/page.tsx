@@ -343,11 +343,8 @@ export default function RolesPage() {
     if (user === undefined) return;
     if (user === null) { router.replace("/login"); return; }
   }, [user, router]);
-
-  useEffect(() => {
-    if (profile === undefined) return;
-    if (profile === null) { router.replace("/onboarding"); return; }
-  }, [profile, router]);
+  // No redirect when profile === null — the page handles it gracefully by
+  // seeding empty arrays and creating the profile via updateRoleVariations.
 
   // ── Seed from profile (once) ────────────────────────────────────────────────
   useEffect(() => {
@@ -379,7 +376,7 @@ export default function RolesPage() {
   }
 
   // ── Loading / redirecting ────────────────────────────────────────────────────
-  if (user === undefined || profile === undefined || user === null || profile === null) {
+  if (user === undefined || profile === undefined || user === null) {
     return (
       <main
         style={{

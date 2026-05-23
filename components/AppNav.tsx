@@ -252,9 +252,10 @@ export default function AppNav() {
 
   const displayName = user?.name ?? user?.email ?? "";
   const initials = getInitials(user?.name, user?.email);
+  // Show visa status if set; nothing if not (email is visible in the dropdown).
   const subLabel = user?.visaStatus
-    ? user.visaStatus.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()) + " visa"
-    : user?.email ?? "";
+    ? user.visaStatus.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) + " visa"
+    : "";
 
   return (
     <>
