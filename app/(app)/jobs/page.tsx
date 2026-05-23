@@ -1797,7 +1797,7 @@ function CvUploadBanner({ onDismiss }: { onDismiss: () => void }) {
         Upload your CV to generate tailored applications
       </span>
       <a
-        href="/onboarding"
+        href="/onboarding/cv"
         style={{
           fontSize: 11,
           fontWeight: 600,

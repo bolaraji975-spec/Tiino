@@ -5,7 +5,7 @@
 import { v } from "convex/values";
 import { query, internalQuery } from "../_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { matchesRoleVariation } from "../lib/matchRoleVariation";
+import { matchesRoleVariation, matchesRoleVariationLoose } from "../lib/matchRoleVariation";
 
 // ---------------------------------------------------------------------------
 // getSavedJobIds
@@ -179,9 +179,12 @@ export const listForUser = query({
       .withIndex("byActive", (q) => q.eq("isActive", true))
       .collect();
 
-    // ── 1. Role variation filter ───────────────────────────────────────────
+    // ── 1. Role variation filter (loose: ANY word from ANY variation) ─────
+    // Uses loose matching so "Data Analyst" variation catches "Business Analyst"
+    // jobs etc. The strict matchesRoleVariation is kept for the per-job
+    // "Matches your profile" signal only.
     let filtered = allActive.filter((j) =>
-      matchesRoleVariation(j.title, variations),
+      matchesRoleVariationLoose(j.title, variations),
     );
 
     // ── 2. Band filter ────────────────────────────────────────────────────
@@ -241,6 +244,51 @@ export const listForUser = query({
       }
       return b.postedAt - a.postedAt;
     });
+
+    // ── Fallback: < 5 role matches → show all sponsored jobs ─────────────
+    // When a user's role variations yield fewer than 5 results (e.g. niche
+    // title, or newly set-up profile), expand to all non-very_low active jobs
+    // so the feed never appears empty. Other active filters (band, location,
+    // salary, postedWithin, source) are preserved — only the role filter is
+    // relaxed.
+    const FALLBACK_THRESHOLD = 5;
+    if (variations.length > 0 && filtered.length < FALLBACK_THRESHOLD) {
+      let fallback = allActive.filter((j) => j.sponsorshipBand !== "very_low");
+
+      if (args.band) {
+        fallback = fallback.filter((j) => j.sponsorshipBand === args.band);
+      }
+      if (args.location) {
+        const loc = args.location.toLowerCase().trim();
+        if (loc) fallback = fallback.filter((j) => j.location.toLowerCase().includes(loc));
+      }
+      if (args.salaryMin !== undefined && args.salaryMin > 0) {
+        const threshold = args.salaryMin;
+        fallback = fallback.filter(
+          (j) => j.salaryMin === undefined || j.salaryMin >= threshold,
+        );
+      }
+      if (args.postedWithin) {
+        const ms = { "24h": 86_400_000, "7d": 604_800_000, "30d": 2_592_000_000 }[args.postedWithin];
+        const cutoff = Date.now() - ms;
+        fallback = fallback.filter((j) => j.postedAt >= cutoff);
+      }
+      if (args.source) {
+        if (args.source === "private") {
+          fallback = fallback.filter((j) => !j.isPublicSector);
+        } else {
+          const src = args.source;
+          fallback = fallback.filter((j) => j.sourceIds.some((s) => s.source === src));
+        }
+      }
+
+      fallback.sort((a, b) => {
+        if (b.sponsorshipScore !== a.sponsorshipScore) return b.sponsorshipScore - a.sponsorshipScore;
+        return b.postedAt - a.postedAt;
+      });
+
+      filtered = fallback;
+    }
 
     const limit = Math.min(args.limit ?? 20, HARD_LIMIT);
 

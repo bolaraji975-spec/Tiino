@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { matchesRoleVariation } from "../../convex/lib/matchRoleVariation";
+import { matchesRoleVariation, matchesRoleVariationLoose } from "../../convex/lib/matchRoleVariation";
 
 describe("matchesRoleVariation", () => {
   // ── Empty variations (no profile yet) ─────────────────────────────────────
@@ -80,5 +80,47 @@ describe("matchesRoleVariation", () => {
   it("handles numeric tokens in titles", () => {
     expect(matchesRoleVariation("SWE II", ["SWE II"])).toBe(true);
     expect(matchesRoleVariation("SWE III", ["SWE II"])).toBe(false);
+  });
+});
+
+// ── matchesRoleVariationLoose ──────────────────────────────────────────────────
+
+describe("matchesRoleVariationLoose", () => {
+  it("returns true for any title when variations is empty", () => {
+    expect(matchesRoleVariationLoose("Platform Engineer", [])).toBe(true);
+  });
+
+  it("matches when any variation word appears in the title", () => {
+    // "engineer" is in both
+    expect(matchesRoleVariationLoose("Platform Engineer", ["Software Engineer"])).toBe(true);
+    // "analyst" is shared
+    expect(matchesRoleVariationLoose("Business Analyst", ["Data Analyst"])).toBe(true);
+    // "developer" is shared
+    expect(matchesRoleVariationLoose("iOS Developer", ["Frontend Developer"])).toBe(true);
+  });
+
+  it("does not match when no variation word appears in the title", () => {
+    expect(matchesRoleVariationLoose("Marketing Manager", ["Software Engineer"])).toBe(false);
+    expect(matchesRoleVariationLoose("Sales Director", ["Data Scientist"])).toBe(false);
+  });
+
+  it("ignores stop words", () => {
+    // "for" and "the" are stop words — should not cause a match
+    expect(matchesRoleVariationLoose("A Role For The Team", ["Software Engineer"])).toBe(false);
+  });
+
+  it("returns true when any of multiple variations contributes a matching word", () => {
+    const variations = ["Data Analyst", "Product Manager"];
+    expect(matchesRoleVariationLoose("Senior Analyst", variations)).toBe(true);
+    expect(matchesRoleVariationLoose("Product Designer", variations)).toBe(true);
+    expect(matchesRoleVariationLoose("Sales Executive", variations)).toBe(false);
+  });
+
+  it("returns true for empty variations", () => {
+    expect(matchesRoleVariationLoose("", [])).toBe(true);
+  });
+
+  it("returns false for empty job title with non-empty variations", () => {
+    expect(matchesRoleVariationLoose("", ["Software Engineer"])).toBe(false);
   });
 });

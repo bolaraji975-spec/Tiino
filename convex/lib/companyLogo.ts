@@ -194,9 +194,26 @@ function deriveDomain(name: string): string {
 
 /**
  * Returns the Clearbit logo URL for a company.
- * Uses the domain override map for known employers; derives domain for others.
+ *
+ * Special-cased before the override map:
+ *   NHS / Trust / Foundation Trust / Hospital names → nhs.uk logo
+ *   (virtually all UK Foundation Trusts and NHS Trusts are NHS organisations)
+ *
+ * Then falls through to the domain override map, then derives a domain.
  */
 export function getLogoUrl(companyName: string): string {
+  // NHS pattern: any name containing "NHS", "Foundation Trust", standalone
+  // "Trust" (NHS context), or "Hospital" / "Infirmary" is treated as NHS.
+  if (
+    /\bnhs\b/i.test(companyName) ||
+    /foundation\s+trust/i.test(companyName) ||
+    /\btrust\b/i.test(companyName) ||
+    /\bhospital\b/i.test(companyName) ||
+    /\binfirmary\b/i.test(companyName)
+  ) {
+    return "https://logo.clearbit.com/nhs.uk";
+  }
+
   const key = normaliseForLookup(companyName);
   const domain = DOMAIN_OVERRIDES[key] ?? deriveDomain(companyName);
   return `https://logo.clearbit.com/${domain}`;

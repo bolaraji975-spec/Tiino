@@ -1,17 +1,51 @@
 /**
  * matchRoleVariation.ts
  *
- * Pure helper: returns true when a job title matches at least one of the user's
- * role variation strings (exact or adjacent titles from their profile).
+ * Two matching functions for the feed:
  *
- * Matching rule: tokenise both strings (lowercase, split on non-alphanumeric),
- * then check bidirectional token-set subset — i.e. all variation tokens appear
- * in the title OR all title tokens appear in the variation. This lets:
- *   - "Software Engineer" match "Senior Software Engineer"  (var ⊆ title)
- *   - "Senior Software Engineer" match "Software Engineer"  (title ⊆ var)
+ * matchesRoleVariation (strict) — bidirectional token-set subset check.
+ *   Used for the "Matches your profile" signal on the job detail panel.
+ *   "Software Engineer" ⊆ "Senior Software Engineer" → match
+ *   "Platform Engineer" vs "Software Engineer" → no match (shares "engineer"
+ *   but subset check fails both ways).
  *
- * When variations is empty (profile not yet set up) every job matches.
+ * matchesRoleVariationLoose — ANY significant word from ANY variation appears
+ *   in the job title. Used for the feed filter so that e.g. a user with
+ *   "Data Analyst" sees "Business Analyst" jobs too. Falls back to all jobs
+ *   if fewer than 5 results (handled in listForUser).
+ *
+ * When variations is empty every job matches in both functions.
  */
+
+// Words excluded from loose matching to avoid noise
+const STOP_WORDS = new Set([
+  "a", "an", "the", "and", "or", "of", "in", "at", "for", "with",
+  "to", "is", "are", "by", "as", "on", "it", "be", "its", "from",
+  "up", "out", "role", "job", "work", "based",
+]);
+
+/**
+ * Loose feed filter: job title matches if ANY significant word from ANY
+ * variation appears in the title. Min word length 3 to skip noise.
+ */
+export function matchesRoleVariationLoose(
+  jobTitle: string,
+  variations: string[],
+): boolean {
+  if (variations.length === 0) return true;
+
+  // Collect all significant words across all variations
+  const variationWords = new Set(
+    variations.flatMap((v) =>
+      tokenize(v).filter((t) => t.length >= 3 && !STOP_WORDS.has(t)),
+    ),
+  );
+
+  if (variationWords.size === 0) return true;
+
+  const titleTokens = tokenize(jobTitle);
+  return [...variationWords].some((w) => titleTokens.includes(w));
+}
 
 export function matchesRoleVariation(
   jobTitle: string,
