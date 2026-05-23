@@ -20,7 +20,7 @@
  *                        │    UKVI status, rating, route
  */
 
-import { use, useState, useEffect, useRef } from "react";
+import { use, useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api";
@@ -824,9 +824,10 @@ interface ApplyModalProps {
   company: string;
   applyUrl: string;
   onClose: () => void;
+  onProceed: () => void;
 }
 
-function ApplyModal({ company, applyUrl, onClose }: ApplyModalProps) {
+function ApplyModal({ company, applyUrl, onClose, onProceed }: ApplyModalProps) {
   // Close on Escape
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -838,6 +839,7 @@ function ApplyModal({ company, applyUrl, onClose }: ApplyModalProps) {
 
   function proceed() {
     window.open(applyUrl, "_blank", "noopener,noreferrer");
+    onProceed();
     onClose();
   }
 
@@ -951,6 +953,15 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
 
   const saveJobMutation = useMutation(api.applications.mutations.saveJob);
   const unsaveJobMutation = useMutation(api.applications.mutations.unsaveJob);
+  const trackApplyMutation = useMutation(api.applications.mutations.trackApply);
+
+  // Must be declared here (before any early returns) to satisfy Rules of Hooks.
+  // Safe to call only when result is loaded — the modal that triggers it is
+  // only rendered in the main path, after the null/undefined guards.
+  const handleTrackApply = useCallback(() => {
+    if (!result?.job) return;
+    void trackApplyMutation({ jobId: result.job._id });
+  }, [trackApplyMutation, result]);
 
   // Optimistic isSaved: flip immediately, real value follows from query
   const querySaved = result?.isSaved ?? false;
@@ -1064,6 +1075,7 @@ function JobDetailInner({ id }: JobDetailInnerProps) {
           company={job.company}
           applyUrl={applyUrl}
           onClose={() => setShowApplyModal(false)}
+          onProceed={handleTrackApply}
         />
       )}
 

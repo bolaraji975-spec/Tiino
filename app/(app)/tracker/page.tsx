@@ -1,35 +1,29 @@
 "use client";
 
 /**
- * Application Tracker — /tracker
+ * Application History — /tracker
  *
- * Kanban board: one column per stage, cards show company logo, title,
- * company, score band, and days since applied.
+ * Simple list view showing everything Tino knows about the user's activity.
+ * Status is updated automatically:
+ *   Job saved      → Saved   (grey)
+ *   CV generated   → CV Ready (blue)
+ *   Apply clicked  → Applied  (teal)
+ *   Job expired    → Expired  (red)
  *
- * Clicking a card opens a slide-over panel to advance the stage or
- * mark as rejected / withdrawn.
- *
- * Stages (schema value → display label):
- *   saved               → Saved
- *   cv_generated        → CV Generated
- *   applied             → Applied
- *   acknowledged        → Phone Screen
- *   interview_scheduled → Interview
- *   interview_done      → Assessment
- *   offer_received      → Offer
- *   closed+offer_accepted → Accepted
- *   closed+(other)      → Rejected / Withdrawn
+ * Layout:
+ *   Topbar  (heading + stats + filter tabs)
+ *   Scrollable table  (logo, title, company, location, status, date, salary)
+ *   Empty state
  */
 
 import { useQuery, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
-import { useState, FormEvent } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { CompanyLogo } from "@/components/CompanyLogo";
-import { ScoreBand } from "@/components/ScoreBand";
-import type { Band } from "@/components/ScoreBand";
+import type { DisplayStatus } from "@/convex/applications/queries";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,156 +33,95 @@ type AppRecord = NonNullable<
   ReturnType<typeof useQuery<typeof api.applications.queries.listForUser>>
 >[number];
 
-type StageKey =
-  | "saved"
-  | "cv_generated"
-  | "applied"
-  | "acknowledged"
-  | "interview_scheduled"
-  | "interview_done"
-  | "offer_received"
-  | "accepted"
-  | "rejected_withdrawn";
-
-// ---------------------------------------------------------------------------
-// Stage config
-// ---------------------------------------------------------------------------
-
-interface StageConfig {
-  key: StageKey;
-  label: string;
-  /** Schema stage value to advance to (null for terminal display-only columns) */
-  advanceTo: string | null;
-  advanceLabel: string | null;
-  emptyText: string;
-}
-
-const STAGES: StageConfig[] = [
-  {
-    key: "saved",
-    label: "Saved",
-    advanceTo: "applied",
-    advanceLabel: "Mark as applied",
-    emptyText: "Nothing saved yet. Add a job to start tracking it.",
-  },
-  {
-    key: "cv_generated",
-    label: "CV Generated",
-    advanceTo: "applied",
-    advanceLabel: "Mark as applied",
-    emptyText: "No CVs generated yet. Generate one from any job listing.",
-  },
-  {
-    key: "applied",
-    label: "Applied",
-    advanceTo: "acknowledged",
-    advanceLabel: "Log phone screen",
-    emptyText: "No applications sent yet.",
-  },
-  {
-    key: "acknowledged",
-    label: "Phone Screen",
-    advanceTo: "interview_scheduled",
-    advanceLabel: "Log interview",
-    emptyText: "No phone screens logged.",
-  },
-  {
-    key: "interview_scheduled",
-    label: "Interview",
-    advanceTo: "interview_done",
-    advanceLabel: "Log assessment",
-    emptyText: "No interviews scheduled.",
-  },
-  {
-    key: "interview_done",
-    label: "Assessment",
-    advanceTo: "offer_received",
-    advanceLabel: "Log offer",
-    emptyText: "No assessments logged.",
-  },
-  {
-    key: "offer_received",
-    label: "Offer",
-    advanceTo: "closed",
-    advanceLabel: "Accept offer",
-    emptyText: "No offers yet. Keep going.",
-  },
-  {
-    key: "accepted",
-    label: "Accepted",
-    advanceTo: null,
-    advanceLabel: null,
-    emptyText: "Nothing accepted yet.",
-  },
-  {
-    key: "rejected_withdrawn",
-    label: "Rejected / Withdrawn",
-    advanceTo: null,
-    advanceLabel: null,
-    emptyText: "Nothing archived here yet.",
-  },
-];
+type FilterTab = "all" | DisplayStatus;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function resolveColumnKey(stage: string, outcome: string | null): StageKey {
-  if (stage === "closed") {
-    return outcome === "offer_accepted" ? "accepted" : "rejected_withdrawn";
-  }
-  return stage as StageKey;
+function formatSalary(min: number | null, max: number | null): string | null {
+  if (!min && !max) return null;
+  const fmt = (n: number) =>
+    n >= 1000 ? `£${Math.round(n / 1000)}k` : `£${n}`;
+  if (min && max) return `${fmt(min)} – ${fmt(max)}`;
+  if (min) return `${fmt(min)}+`;
+  if (max) return `Up to ${fmt(max)}`;
+  return null;
 }
 
-function daysLabel(days: number | null): string {
-  if (days === null) return "Not applied yet";
+function formatDate(ms: number): string {
+  const now = Date.now();
+  const diff = now - ms;
+  const days = Math.floor(diff / 86_400_000);
+
   if (days === 0) return "Today";
-  if (days === 1) return "1d ago";
-  return `${days}d ago`;
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days}d ago`;
+
+  return new Date(ms).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: days > 365 ? "numeric" : undefined,
+  });
 }
 
 // ---------------------------------------------------------------------------
-// Stats computation
+// Status badge
 // ---------------------------------------------------------------------------
 
-interface Stats {
-  total: number;
-  responseRate: number | null;
-  avgDaysToInterview: number | null;
-  activeOffers: number;
-}
+const STATUS_CONFIG: Record<
+  DisplayStatus,
+  { label: string; color: string; bg: string; border: string }
+> = {
+  saved: {
+    label: "Saved",
+    color: "rgba(255,255,255,0.60)",
+    bg: "rgba(255,255,255,0.05)",
+    border: "rgba(255,255,255,0.12)",
+  },
+  cv_ready: {
+    label: "CV Ready",
+    color: "rgba(96,165,250,0.90)",
+    bg: "rgba(96,165,250,0.08)",
+    border: "rgba(96,165,250,0.25)",
+  },
+  applied: {
+    label: "Applied",
+    color: "#1BAAC1",
+    bg: "rgba(27,170,193,0.10)",
+    border: "rgba(27,170,193,0.28)",
+  },
+  expired: {
+    label: "Expired",
+    color: "rgba(248,113,113,0.80)",
+    bg: "rgba(248,113,113,0.08)",
+    border: "rgba(248,113,113,0.22)",
+  },
+};
 
-function computeStats(apps: AppRecord[]): Stats {
-  const total = apps.length;
-
-  const applied = apps.filter((a) =>
-    ["applied", "acknowledged", "interview_scheduled", "interview_done",
-      "offer_received", "closed"].includes(a.stage),
+function StatusBadge({ status }: { status: DisplayStatus }) {
+  const cfg = STATUS_CONFIG[status];
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        fontFamily: "'DM Mono', monospace",
+        fontSize: 10,
+        fontWeight: 600,
+        letterSpacing: "0.8px",
+        textTransform: "uppercase",
+        color: cfg.color,
+        background: cfg.bg,
+        border: `1px solid ${cfg.border}`,
+        borderRadius: 3,
+        padding: "3px 8px",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {cfg.label}
+    </span>
   );
-  const responded = apps.filter((a) =>
-    ["acknowledged", "interview_scheduled", "interview_done",
-      "offer_received"].includes(a.stage) ||
-    (a.stage === "closed" && a.outcome === "offer_accepted"),
-  );
-  const responseRate =
-    applied.length > 0
-      ? Math.round((responded.length / applied.length) * 100)
-      : null;
-
-  const daysToInterviewList = apps
-    .map((a) => a.daysToInterview)
-    .filter((d): d is number => d !== null);
-  const avgDaysToInterview =
-    daysToInterviewList.length > 0
-      ? Math.round(
-          daysToInterviewList.reduce((s, d) => s + d, 0) /
-            daysToInterviewList.length,
-        )
-      : null;
-
-  const activeOffers = apps.filter((a) => a.stage === "offer_received").length;
-
-  return { total, responseRate, avgDaysToInterview, activeOffers };
 }
 
 // ---------------------------------------------------------------------------
@@ -207,777 +140,305 @@ function StatCard({
   return (
     <div
       style={{
-        background: "rgba(255,255,255,0.03)",
-        border: "1px solid rgba(255,255,255,0.07)",
-        padding: "14px 20px",
-        minWidth: 140,
+        display: "flex",
+        flexDirection: "column",
+        gap: 3,
       }}
     >
-      <div
+      <span
         style={{
-          fontFamily: "var(--mono, 'DM Mono', monospace)",
-          fontSize: 24,
+          fontFamily: "'DM Mono', monospace",
+          fontSize: 20,
           fontWeight: 700,
-          color: dim ? "rgba(255,255,255,0.35)" : "#f9fafb",
-          lineHeight: 1.1,
+          color: dim ? "rgba(255,255,255,0.30)" : "rgba(255,255,255,0.90)",
+          lineHeight: 1,
         }}
       >
         {value}
-      </div>
-      <div
+      </span>
+      <span
         style={{
-          fontFamily: "var(--mono, 'DM Mono', monospace)",
-          fontSize: 11,
-          color: "rgba(255,255,255,0.4)",
+          fontFamily: "'DM Mono', monospace",
+          fontSize: 10,
+          color: "rgba(255,255,255,0.35)",
           textTransform: "uppercase",
-          letterSpacing: "1.2px",
-          marginTop: 5,
+          letterSpacing: "1px",
         }}
       >
         {label}
-      </div>
+      </span>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Application card
+// Filter tab
 // ---------------------------------------------------------------------------
 
-function AppCard({
-  app,
-  onOpen,
+function Tab({
+  label,
+  count,
+  active,
+  onClick,
 }: {
-  app: AppRecord;
-  onOpen: (app: AppRecord) => void;
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
 }) {
   return (
     <button
-      type="button"
-      onClick={() => onOpen(app)}
+      onClick={onClick}
       style={{
-        display: "block",
-        width: "100%",
-        textAlign: "left",
-        background: "rgba(255,255,255,0.04)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        padding: "12px",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        fontSize: 12,
+        fontWeight: active ? 600 : 400,
+        color: active ? "rgba(255,255,255,0.90)" : "rgba(255,255,255,0.45)",
+        background: "none",
+        border: "none",
+        borderBottom: active
+          ? "2px solid #1BAAC1"
+          : "2px solid transparent",
+        padding: "6px 4px",
         cursor: "pointer",
-        transition: "border-color 0.15s, background 0.15s",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.borderColor =
-          "rgba(27,170,193,0.4)";
-        (e.currentTarget as HTMLButtonElement).style.background =
-          "rgba(27,170,193,0.05)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.borderColor =
-          "rgba(255,255,255,0.08)";
-        (e.currentTarget as HTMLButtonElement).style.background =
-          "rgba(255,255,255,0.04)";
+        fontFamily: "inherit",
+        whiteSpace: "nowrap",
+        transition: "color 0.12s, border-color 0.12s",
       }}
     >
-      {/* Logo + title row */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-        <CompanyLogo company={app.company} size={32} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#f9fafb",
-              lineHeight: 1.3,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {app.jobTitle}
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              color: "rgba(255,255,255,0.5)",
-              marginTop: 2,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {app.company}
-          </div>
-        </div>
-      </div>
-
-      {/* Score band + days */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginTop: 10,
-          gap: 8,
-        }}
-      >
-        <ScoreBand band={app.sponsorshipBand as Band} />
+      {label}
+      {count > 0 && (
         <span
           style={{
-            fontFamily: "var(--mono, 'DM Mono', monospace)",
-            fontSize: 11,
-            color: "rgba(255,255,255,0.35)",
-            whiteSpace: "nowrap",
+            fontFamily: "'DM Mono', monospace",
+            fontSize: 10,
+            color: active ? "#1BAAC1" : "rgba(255,255,255,0.30)",
+            background: active
+              ? "rgba(27,170,193,0.12)"
+              : "rgba(255,255,255,0.06)",
+            borderRadius: 10,
+            padding: "1px 6px",
           }}
         >
-          {daysLabel(app.daysSinceApplied)}
+          {count}
         </span>
-      </div>
+      )}
     </button>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Kanban column
+// History row
 // ---------------------------------------------------------------------------
 
-function KanbanColumn({
-  config,
-  cards,
-  onOpen,
-}: {
-  config: StageConfig;
-  cards: AppRecord[];
-  onOpen: (app: AppRecord) => void;
-}) {
+interface HistoryRowProps {
+  app: AppRecord;
+  onRemove: (id: Id<"applications">) => void;
+}
+
+function HistoryRow({ app, onRemove }: HistoryRowProps) {
+  const router = useRouter();
+  const salary = formatSalary(app.salaryMin, app.salaryMax);
+  const date = formatDate(app.lastActivityAt);
+  const [removing, setRemoving] = useState(false);
+
+  async function handleRemove(e: React.MouseEvent) {
+    e.stopPropagation();
+    setRemoving(true);
+    onRemove(app._id as Id<"applications">);
+  }
+
   return (
     <div
+      onClick={() => router.push(`/jobs/${app.jobId}`)}
       style={{
-        flexShrink: 0,
-        width: 220,
-        display: "flex",
-        flexDirection: "column",
-        gap: 0,
+        display: "grid",
+        gridTemplateColumns: "40px 1fr 140px 100px 80px auto",
+        alignItems: "center",
+        gap: 16,
+        padding: "12px 20px",
+        borderBottom: "1px solid rgba(255,255,255,0.05)",
+        cursor: "pointer",
+        transition: "background 0.12s",
       }}
+      onMouseEnter={(e) =>
+        ((e.currentTarget as HTMLDivElement).style.background =
+          "rgba(27,170,193,0.04)")
+      }
+      onMouseLeave={(e) =>
+        ((e.currentTarget as HTMLDivElement).style.background = "transparent")
+      }
     >
-      {/* Column header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "10px 12px",
-          borderBottom: "1px solid rgba(255,255,255,0.07)",
-          marginBottom: 10,
-        }}
-      >
-        <span
-          style={{
-            fontFamily: "var(--mono, 'DM Mono', monospace)",
-            fontSize: 11,
-            fontWeight: 600,
-            color: "rgba(255,255,255,0.55)",
-            textTransform: "uppercase",
-            letterSpacing: "1.2px",
-          }}
-        >
-          {config.label}
-        </span>
-        {cards.length > 0 && (
-          <span
-            style={{
-              fontFamily: "var(--mono, 'DM Mono', monospace)",
-              fontSize: 11,
-              color: "#1BAAC1",
-              background: "rgba(27,170,193,0.12)",
-              padding: "1px 7px",
-              borderRadius: 20,
-            }}
-          >
-            {cards.length}
-          </span>
-        )}
+      {/* Logo */}
+      <div style={{ flexShrink: 0 }}>
+        <CompanyLogo company={app.company} size={32} />
       </div>
 
-      {/* Cards */}
+      {/* Title + company + location */}
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: "rgba(255,255,255,0.88)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            marginBottom: 2,
+          }}
+        >
+          {app.jobTitle}
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            color: "rgba(255,255,255,0.42)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {app.company}
+          {app.location ? ` · ${app.location}` : ""}
+        </div>
+      </div>
+
+      {/* Status badge */}
+      <div>
+        <StatusBadge status={app.displayStatus} />
+      </div>
+
+      {/* Date of last action */}
       <div
         style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-          flex: 1,
-          overflowY: "auto",
-          paddingBottom: 16,
+          fontFamily: "'DM Mono', monospace",
+          fontSize: 11,
+          color: "rgba(255,255,255,0.38)",
+          whiteSpace: "nowrap",
         }}
       >
-        {cards.length === 0 ? (
-          <p
-            style={{
-              fontSize: 12,
-              color: "rgba(255,255,255,0.22)",
-              padding: "8px 4px",
-              lineHeight: 1.5,
-            }}
+        {date}
+      </div>
+
+      {/* Salary */}
+      <div
+        style={{
+          fontFamily: "'DM Mono', monospace",
+          fontSize: 11,
+          color: "rgba(255,255,255,0.42)",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {salary ?? "—"}
+      </div>
+
+      {/* Remove button */}
+      <div onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={handleRemove}
+          disabled={removing}
+          aria-label="Remove from history"
+          title="Remove from history"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 26,
+            height: 26,
+            background: "none",
+            border: "1px solid rgba(255,255,255,0.09)",
+            borderRadius: 0,
+            cursor: removing ? "default" : "pointer",
+            color: "rgba(255,255,255,0.28)",
+            opacity: removing ? 0.4 : 1,
+            transition: "color 0.12s, border-color 0.12s",
+            padding: 0,
+          }}
+          onMouseEnter={(e) => {
+            if (!removing) {
+              (e.currentTarget as HTMLButtonElement).style.color =
+                "rgba(248,113,113,0.75)";
+              (e.currentTarget as HTMLButtonElement).style.borderColor =
+                "rgba(248,113,113,0.30)";
+            }
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.color =
+              "rgba(255,255,255,0.28)";
+            (e.currentTarget as HTMLButtonElement).style.borderColor =
+              "rgba(255,255,255,0.09)";
+          }}
+        >
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            aria-hidden="true"
           >
-            {config.emptyText}
-          </p>
-        ) : (
-          cards.map((app) => (
-            <AppCard key={app._id} app={app} onOpen={onOpen} />
-          ))
-        )}
+            <line
+              x1="1.5"
+              y1="1.5"
+              x2="8.5"
+              y2="8.5"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+            />
+            <line
+              x1="8.5"
+              y1="1.5"
+              x2="1.5"
+              y2="8.5"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Stage slide-over panel
+// Table header
 // ---------------------------------------------------------------------------
 
-const OUTCOME_LABELS: Record<string, string> = {
-  offer_accepted: "Offer accepted",
-  offer_declined: "Offer declined",
-  rejected: "Rejected",
-  ghosted: "Ghosted",
-  withdrawn: "Withdrawn",
-};
-
-const STAGE_DISPLAY: Record<string, string> = {
-  saved: "Saved",
-  cv_generated: "CV Generated",
-  applied: "Applied",
-  acknowledged: "Phone Screen",
-  interview_scheduled: "Interview",
-  interview_done: "Assessment",
-  offer_received: "Offer",
-  closed: "Closed",
-};
-
-function StagePanel({
-  app,
-  onClose,
-  onAdvance,
-}: {
-  app: AppRecord;
-  onClose: () => void;
-  onAdvance: (
-    toStage: string,
-    outcome?: string,
-    notes?: string,
-  ) => Promise<void>;
-}) {
-  const [notes, setNotes] = useState(app.notes ?? "");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [mode, setMode] = useState<"default" | "reject" | "withdraw">("default");
-  const [rejectReason, setRejectReason] = useState("rejected");
-  const [withdrawReason, setWithdrawReason] = useState("withdrawn");
-
-  const colKey = resolveColumnKey(app.stage, app.outcome);
-  const stageConfig = STAGES.find((s) => s.key === colKey);
-  const isClosed = app.stage === "closed";
-
-  async function handleAdvance(e: FormEvent) {
-    e.preventDefault();
-    if (!stageConfig?.advanceTo) return;
-    setError("");
-    setLoading(true);
-    try {
-      const outcome =
-        stageConfig.advanceTo === "closed" ? "offer_accepted" : undefined;
-      await onAdvance(stageConfig.advanceTo, outcome, notes);
-      onClose();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleClose(outcome: string) {
-    setError("");
-    setLoading(true);
-    try {
-      await onAdvance("closed", outcome, notes);
-      onClose();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const currentStageLabel =
-    isClosed && app.outcome
-      ? OUTCOME_LABELS[app.outcome] ?? "Closed"
-      : (STAGE_DISPLAY[app.stage] ?? app.stage);
-
+function TableHeader() {
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        onClick={onClose}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.55)",
-          zIndex: 40,
-        }}
-      />
-
-      {/* Panel */}
-      <div
-        style={{
-          position: "fixed",
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: 380,
-          background: "#0a1f1f",
-          borderLeft: "1px solid rgba(255,255,255,0.08)",
-          zIndex: 50,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            padding: "20px 24px 16px",
-            borderBottom: "1px solid rgba(255,255,255,0.07)",
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 14,
-          }}
-        >
-          <CompanyLogo company={app.company} size={42} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h2
-              style={{
-                margin: 0,
-                fontSize: 15,
-                fontWeight: 700,
-                color: "#f9fafb",
-                lineHeight: 1.3,
-              }}
-            >
-              {app.jobTitle}
-            </h2>
-            <p
-              style={{
-                margin: "3px 0 0",
-                fontSize: 13,
-                color: "rgba(255,255,255,0.5)",
-              }}
-            >
-              {app.company}
-            </p>
-            <div style={{ marginTop: 8 }}>
-              <ScoreBand band={app.sponsorshipBand as Band} />
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close panel"
-            style={{
-              background: "none",
-              border: "none",
-              color: "rgba(255,255,255,0.4)",
-              cursor: "pointer",
-              fontSize: 20,
-              lineHeight: 1,
-              padding: 2,
-              flexShrink: 0,
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Stage breadcrumb */}
-        <div
-          style={{
-            padding: "12px 24px",
-            borderBottom: "1px solid rgba(255,255,255,0.05)",
-          }}
-        >
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "40px 1fr 140px 100px 80px auto",
+        alignItems: "center",
+        gap: 16,
+        padding: "8px 20px",
+        borderBottom: "1px solid rgba(255,255,255,0.08)",
+      }}
+    >
+      {["", "Role", "Status", "Last activity", "Salary", ""].map(
+        (col, i) => (
           <span
+            key={i}
             style={{
-              fontFamily: "var(--mono, 'DM Mono', monospace)",
-              fontSize: 11,
-              color: "rgba(255,255,255,0.35)",
+              fontFamily: "'DM Mono', monospace",
+              fontSize: 9,
+              fontWeight: 500,
+              letterSpacing: "1.4px",
               textTransform: "uppercase",
-              letterSpacing: "1.2px",
+              color: "rgba(255,255,255,0.28)",
             }}
           >
-            Stage
+            {col}
           </span>
-          <span
-            style={{
-              fontFamily: "var(--mono, 'DM Mono', monospace)",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#1BAAC1",
-              marginLeft: 10,
-            }}
-          >
-            {currentStageLabel}
-          </span>
-          {app.daysSinceApplied !== null && (
-            <span
-              style={{
-                fontFamily: "var(--mono, 'DM Mono', monospace)",
-                fontSize: 11,
-                color: "rgba(255,255,255,0.3)",
-                marginLeft: 12,
-              }}
-            >
-              {daysLabel(app.daysSinceApplied)}
-            </span>
-          )}
-        </div>
-
-        {/* Body */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: "20px 24px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-          }}
-        >
-          {error && (
-            <p
-              style={{
-                fontSize: 13,
-                color: "#f87171",
-                background: "rgba(248,113,113,0.08)",
-                border: "1px solid rgba(248,113,113,0.2)",
-                padding: "10px 14px",
-                margin: 0,
-              }}
-            >
-              {error}
-            </p>
-          )}
-
-          {/* Reject form */}
-          {mode === "reject" && (
-            <div
-              style={{
-                border: "1px solid rgba(255,255,255,0.08)",
-                padding: "16px",
-              }}
-            >
-              <p
-                style={{
-                  margin: "0 0 12px",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#f9fafb",
-                }}
-              >
-                Mark as rejected
-              </p>
-              <label
-                style={{
-                  display: "block",
-                  fontFamily: "var(--mono,'DM Mono',monospace)",
-                  fontSize: 11,
-                  color: "rgba(255,255,255,0.4)",
-                  textTransform: "uppercase",
-                  letterSpacing: "1.2px",
-                  marginBottom: 6,
-                }}
-              >
-                Reason
-              </label>
-              <select
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                style={{
-                  width: "100%",
-                  background: "#0d2626",
-                  border: "1px solid rgba(27,170,193,0.25)",
-                  color: "#f9fafb",
-                  padding: "8px 10px",
-                  fontSize: 13,
-                  marginBottom: 12,
-                }}
-              >
-                <option value="rejected">No response</option>
-                <option value="rejected">After screening</option>
-                <option value="rejected">After interview</option>
-                <option value="rejected">After offer</option>
-                <option value="ghosted">Ghosted</option>
-              </select>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => handleClose(rejectReason)}
-                  disabled={loading}
-                  style={{
-                    flex: 1,
-                    background: "#ef4444",
-                    color: "#fff",
-                    border: "none",
-                    padding: "9px 16px",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    opacity: loading ? 0.6 : 1,
-                  }}
-                >
-                  {loading ? "Saving…" : "Save"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("default")}
-                  style={{
-                    background: "transparent",
-                    color: "rgba(255,255,255,0.4)",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    padding: "9px 16px",
-                    fontSize: 13,
-                    cursor: "pointer",
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Withdraw form */}
-          {mode === "withdraw" && (
-            <div
-              style={{
-                border: "1px solid rgba(255,255,255,0.08)",
-                padding: "16px",
-              }}
-            >
-              <p
-                style={{
-                  margin: "0 0 12px",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#f9fafb",
-                }}
-              >
-                Withdraw application
-              </p>
-              <label
-                style={{
-                  display: "block",
-                  fontFamily: "var(--mono,'DM Mono',monospace)",
-                  fontSize: 11,
-                  color: "rgba(255,255,255,0.4)",
-                  textTransform: "uppercase",
-                  letterSpacing: "1.2px",
-                  marginBottom: 6,
-                }}
-              >
-                Reason
-              </label>
-              <select
-                value={withdrawReason}
-                onChange={(e) => setWithdrawReason(e.target.value)}
-                style={{
-                  width: "100%",
-                  background: "#0d2626",
-                  border: "1px solid rgba(27,170,193,0.25)",
-                  color: "#f9fafb",
-                  padding: "8px 10px",
-                  fontSize: 13,
-                  marginBottom: 12,
-                }}
-              >
-                <option value="withdrawn">Found another role</option>
-                <option value="withdrawn">Changed my mind</option>
-                <option value="withdrawn">Role changed</option>
-                <option value="withdrawn">Other</option>
-              </select>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => handleClose(withdrawReason)}
-                  disabled={loading}
-                  style={{
-                    flex: 1,
-                    background: "rgba(255,255,255,0.08)",
-                    color: "#f9fafb",
-                    border: "none",
-                    padding: "9px 16px",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    opacity: loading ? 0.6 : 1,
-                  }}
-                >
-                  {loading ? "Saving…" : "Save"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("default")}
-                  style={{
-                    background: "transparent",
-                    color: "rgba(255,255,255,0.4)",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    padding: "9px 16px",
-                    fontSize: 13,
-                    cursor: "pointer",
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Default advance form */}
-          {mode === "default" && (
-            <>
-              {/* Notes */}
-              <div>
-                <label
-                  htmlFor="panel-notes"
-                  style={{
-                    display: "block",
-                    fontFamily: "var(--mono,'DM Mono',monospace)",
-                    fontSize: 11,
-                    color: "rgba(255,255,255,0.4)",
-                    textTransform: "uppercase",
-                    letterSpacing: "1.2px",
-                    marginBottom: 6,
-                  }}
-                >
-                  Notes
-                </label>
-                <textarea
-                  id="panel-notes"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={4}
-                  placeholder="Add any notes about this application…"
-                  style={{
-                    width: "100%",
-                    background: "#0d2626",
-                    border: "1px solid rgba(27,170,193,0.2)",
-                    color: "#f9fafb",
-                    padding: "10px 12px",
-                    fontSize: 13,
-                    resize: "vertical",
-                    outline: "none",
-                    fontFamily: "inherit",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-
-              {/* Apply URL */}
-              {app.applyUrl && (
-                <a
-                  href={app.applyUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: "inline-block",
-                    fontSize: 13,
-                    color: "#1BAAC1",
-                    textDecoration: "underline",
-                    textUnderlineOffset: 3,
-                  }}
-                >
-                  View job listing ↗
-                </a>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Footer actions */}
-        {mode === "default" && (
-          <div
-            style={{
-              padding: "16px 24px",
-              borderTop: "1px solid rgba(255,255,255,0.07)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-            }}
-          >
-            {/* Primary advance button */}
-            {!isClosed && stageConfig?.advanceTo && (
-              <form onSubmit={handleAdvance}>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  style={{
-                    width: "100%",
-                    background: "#1BAAC1",
-                    color: "#0a2828",
-                    border: "none",
-                    padding: "11px 16px",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.8px",
-                    opacity: loading ? 0.7 : 1,
-                  }}
-                >
-                  {loading
-                    ? "Saving…"
-                    : stageConfig.advanceTo === "closed"
-                      ? "Accept offer ✓"
-                      : `${stageConfig.advanceLabel} →`}
-                </button>
-              </form>
-            )}
-
-            {/* Secondary: reject / withdraw */}
-            {!isClosed && (
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => setMode("reject")}
-                  style={{
-                    flex: 1,
-                    background: "transparent",
-                    color: "#f87171",
-                    border: "1px solid rgba(248,113,113,0.25)",
-                    padding: "8px 12px",
-                    fontSize: 12,
-                    cursor: "pointer",
-                  }}
-                >
-                  Reject
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("withdraw")}
-                  style={{
-                    flex: 1,
-                    background: "transparent",
-                    color: "rgba(255,255,255,0.4)",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    padding: "8px 12px",
-                    fontSize: 12,
-                    cursor: "pointer",
-                  }}
-                >
-                  Withdraw
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </>
+        ),
+      )}
+    </div>
   );
 }
 
@@ -987,47 +448,13 @@ function StagePanel({
 
 export default function TrackerPage() {
   const applications = useQuery(api.applications.queries.listForUser);
-  const advanceStage = useMutation(
-    api.applications.mutations.advanceApplicationStage,
+  const removeApplication = useMutation(
+    api.applications.mutations.removeApplication,
   );
 
-  const [selectedApp, setSelectedApp] = useState<AppRecord | null>(null);
-  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<FilterTab>("all");
 
-  // Group into columns
-  const grouped = STAGES.reduce<Record<StageKey, AppRecord[]>>(
-    (acc, s) => ({ ...acc, [s.key]: [] }),
-    {} as Record<StageKey, AppRecord[]>,
-  );
-
-  if (applications) {
-    for (const app of applications) {
-      const col = resolveColumnKey(app.stage, app.outcome);
-      grouped[col].push(app);
-    }
-  }
-
-  const stats = computeStats(applications ?? []);
-
-  async function handleAdvance(
-    toStage: string,
-    outcome?: string,
-    notes?: string,
-  ) {
-    if (!selectedApp) return;
-    await advanceStage({
-      applicationId: selectedApp._id as Id<"applications">,
-      toStage: toStage as Parameters<
-        typeof advanceStage
-      >[0]["toStage"],
-      outcome: outcome as Parameters<typeof advanceStage>[0]["outcome"],
-      notes,
-    });
-    // Optimistically close panel — query will update reactively
-    setSelectedApp(null);
-  }
-
-  // ---------- loading ----------
+  // ── Loading ──────────────────────────────────────────────────────────────
   if (applications === undefined) {
     return (
       <div
@@ -1036,8 +463,9 @@ export default function TrackerPage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "rgba(255,255,255,0.3)",
-          fontSize: 14,
+          color: "rgba(255,255,255,0.30)",
+          fontSize: 13,
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
         }}
       >
         Loading…
@@ -1045,7 +473,7 @@ export default function TrackerPage() {
     );
   }
 
-  // ---------- empty state ----------
+  // ── Empty state ──────────────────────────────────────────────────────────
   if (applications.length === 0) {
     return (
       <div
@@ -1057,53 +485,56 @@ export default function TrackerPage() {
           justifyContent: "center",
           padding: 40,
           textAlign: "center",
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
         }}
       >
         <p
           style={{
-            fontFamily: "var(--mono,'DM Mono',monospace)",
-            fontSize: 11,
+            fontFamily: "'DM Mono', monospace",
+            fontSize: 10,
             color: "#1BAAC1",
             textTransform: "uppercase",
             letterSpacing: "2px",
             marginBottom: 16,
           }}
         >
-          Application tracker
+          Application history
         </p>
         <h1
           style={{
-            fontSize: 24,
+            fontSize: 22,
             fontWeight: 700,
-            color: "#f9fafb",
-            margin: "0 0 12px",
+            color: "rgba(255,255,255,0.90)",
+            margin: "0 0 10px",
+            letterSpacing: "-0.3px",
           }}
         >
           No applications yet.
         </h1>
         <p
           style={{
-            fontSize: 15,
-            color: "rgba(255,255,255,0.45)",
-            maxWidth: 380,
-            lineHeight: 1.6,
-            margin: "0 0 32px",
+            fontSize: 14,
+            color: "rgba(255,255,255,0.42)",
+            maxWidth: 360,
+            lineHeight: 1.65,
+            margin: "0 0 28px",
           }}
         >
-          Find a job you like and hit Save to start tracking it here.
+          Save a job to start tracking it here.
         </p>
         <Link
           href="/jobs"
           style={{
-            display: "inline-block",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
             background: "#1BAAC1",
             color: "#0a2828",
             fontWeight: 700,
-            padding: "12px 28px",
-            fontSize: 14,
+            padding: "10px 22px",
+            fontSize: 13,
             textDecoration: "none",
-            textTransform: "uppercase",
-            letterSpacing: "0.8px",
+            borderRadius: 0,
           }}
         >
           Browse jobs →
@@ -1112,6 +543,36 @@ export default function TrackerPage() {
     );
   }
 
+  // ── Stats ────────────────────────────────────────────────────────────────
+  const totalSaved = applications.filter(
+    (a) => a.displayStatus === "saved",
+  ).length;
+  const totalCvReady = applications.filter(
+    (a) => a.displayStatus === "cv_ready",
+  ).length;
+  const totalApplied = applications.filter(
+    (a) => a.displayStatus === "applied",
+  ).length;
+
+  // ── Filter ───────────────────────────────────────────────────────────────
+  const filtered =
+    activeTab === "all"
+      ? applications
+      : applications.filter((a) => a.displayStatus === activeTab);
+
+  const tabCounts: Record<FilterTab, number> = {
+    all: applications.length,
+    saved: totalSaved,
+    cv_ready: totalCvReady,
+    applied: totalApplied,
+    expired: applications.filter((a) => a.displayStatus === "expired").length,
+  };
+
+  async function handleRemove(id: Id<"applications">) {
+    await removeApplication({ applicationId: id });
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div
       style={{
@@ -1119,129 +580,122 @@ export default function TrackerPage() {
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
       }}
     >
-      {/* Topbar */}
+      {/* ── Topbar ──────────────────────────────────────────────────────── */}
       <div
         style={{
-          padding: "20px 28px 0",
+          padding: "20px 24px 0",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
           flexShrink: 0,
         }}
       >
+        {/* Heading row */}
         <div
           style={{
             display: "flex",
-            alignItems: "flex-end",
+            alignItems: "flex-start",
             justifyContent: "space-between",
-            marginBottom: 20,
+            marginBottom: 18,
+            gap: 16,
           }}
         >
           <div>
             <p
               style={{
-                fontFamily: "var(--mono,'DM Mono',monospace)",
-                fontSize: 11,
+                fontFamily: "'DM Mono', monospace",
+                fontSize: 10,
                 color: "#1BAAC1",
                 textTransform: "uppercase",
                 letterSpacing: "2px",
-                margin: "0 0 6px",
+                margin: "0 0 5px",
               }}
             >
-              Application tracker
+              Application history
             </p>
             <h1
               style={{
-                fontSize: 22,
+                fontSize: 20,
                 fontWeight: 700,
-                color: "#f9fafb",
+                color: "rgba(255,255,255,0.90)",
                 margin: 0,
+                letterSpacing: "-0.3px",
               }}
             >
-              {stats.total} application{stats.total !== 1 ? "s" : ""}
+              {applications.length} application{applications.length !== 1 ? "s" : ""}
             </h1>
           </div>
-          <Link
-            href="/jobs"
+
+          {/* Stats bar */}
+          <div
             style={{
-              fontSize: 13,
-              color: "#1BAAC1",
-              textDecoration: "none",
-              border: "1px solid rgba(27,170,193,0.3)",
-              padding: "7px 14px",
+              display: "flex",
+              gap: 28,
+              alignItems: "flex-start",
+              flexShrink: 0,
             }}
           >
-            + Find jobs
-          </Link>
+            <StatCard value={String(totalSaved)} label="Saved" dim={totalSaved === 0} />
+            <StatCard value={String(totalCvReady)} label="CV Ready" dim={totalCvReady === 0} />
+            <StatCard value={String(totalApplied)} label="Applied" dim={totalApplied === 0} />
+          </div>
         </div>
 
-        {/* Stats bar */}
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            marginBottom: 24,
-            flexWrap: "wrap",
-          }}
-        >
-          <StatCard
-            value={String(stats.total)}
-            label="Total applications"
+        {/* Filter tabs */}
+        <div style={{ display: "flex", gap: 20, alignItems: "flex-end" }}>
+          <Tab
+            label="All"
+            count={tabCounts.all}
+            active={activeTab === "all"}
+            onClick={() => setActiveTab("all")}
           />
-          <StatCard
-            value={
-              stats.responseRate !== null ? `${stats.responseRate}%` : "—"
-            }
-            label="Response rate"
-            dim={stats.responseRate === null}
+          <Tab
+            label="Saved"
+            count={tabCounts.saved}
+            active={activeTab === "saved"}
+            onClick={() => setActiveTab("saved")}
           />
-          <StatCard
-            value={
-              stats.avgDaysToInterview !== null
-                ? `${stats.avgDaysToInterview}d`
-                : "—"
-            }
-            label="Avg days to interview"
-            dim={stats.avgDaysToInterview === null}
+          <Tab
+            label="CV Ready"
+            count={tabCounts.cv_ready}
+            active={activeTab === "cv_ready"}
+            onClick={() => setActiveTab("cv_ready")}
           />
-          {stats.activeOffers > 0 && (
-            <StatCard
-              value={String(stats.activeOffers)}
-              label="Active offer"
+          <Tab
+            label="Applied"
+            count={tabCounts.applied}
+            active={activeTab === "applied"}
+            onClick={() => setActiveTab("applied")}
+          />
+        </div>
+      </div>
+
+      {/* ── Table ───────────────────────────────────────────────────────── */}
+      <div style={{ flex: 1, overflowY: "auto" }}>
+        <TableHeader />
+
+        {filtered.length === 0 ? (
+          <div
+            style={{
+              padding: "48px 24px",
+              textAlign: "center",
+              color: "rgba(255,255,255,0.30)",
+              fontSize: 13,
+            }}
+          >
+            No applications in this category.
+          </div>
+        ) : (
+          filtered.map((app) => (
+            <HistoryRow
+              key={app._id}
+              app={app}
+              onRemove={handleRemove}
             />
-          )}
-        </div>
+          ))
+        )}
       </div>
-
-      {/* Kanban board (horizontal scroll) */}
-      <div
-        style={{
-          flex: 1,
-          overflowX: "auto",
-          overflowY: "hidden",
-          padding: "0 28px 24px",
-          display: "flex",
-          gap: 16,
-          alignItems: "flex-start",
-        }}
-      >
-        {STAGES.map((stage) => (
-          <KanbanColumn
-            key={stage.key}
-            config={stage}
-            cards={grouped[stage.key]}
-            onOpen={setSelectedApp}
-          />
-        ))}
-      </div>
-
-      {/* Slide-over panel */}
-      {selectedApp && (
-        <StagePanel
-          app={selectedApp}
-          onClose={() => setSelectedApp(null)}
-          onAdvance={handleAdvance}
-        />
-      )}
     </div>
   );
 }

@@ -2,7 +2,9 @@
  * applications/queries.ts
  *
  * listForUser:      returns all applications for the authenticated user,
- *                   joined with job details, enriched with display helpers.
+ *                   joined with job details, sorted by most recent activity
+ *                   descending.  Derives a displayStatus from stage + job
+ *                   active flag for the new Application History UI.
  * getDownloadUrls:  converts stored cvFileId / coverLetterFileId to temporary
  *                   signed download URLs for the authenticated owner.
  */
@@ -11,6 +13,50 @@ import { v } from "convex/values";
 import { query } from "../_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { getInitials, getInitialsColor } from "../lib/companyLogo";
+
+// ---------------------------------------------------------------------------
+// Display status derivation
+// ---------------------------------------------------------------------------
+
+/**
+ * The four statuses shown in Application History.
+ * "expired" overrides any saved/cv_generated status when the job is no longer
+ * active — we don't want users applying to dead listings.
+ */
+export type DisplayStatus = "saved" | "cv_ready" | "applied" | "expired";
+
+function deriveDisplayStatus(
+  stage: string,
+  jobIsActive: boolean,
+  jobExpiresAt: number | undefined,
+): DisplayStatus {
+  const now = Date.now();
+  const isExpired =
+    !jobIsActive || (jobExpiresAt !== undefined && jobExpiresAt < now);
+
+  // Only override with "expired" if not yet applied
+  if (isExpired && stage !== "applied") {
+    return "expired";
+  }
+
+  if (stage === "cv_generated") return "cv_ready";
+  if (stage === "applied") return "applied";
+  // Legacy stages (acknowledged, interview_scheduled, etc.) map to "applied"
+  const legacyApplied = [
+    "acknowledged",
+    "interview_scheduled",
+    "interview_done",
+    "offer_received",
+    "closed",
+  ];
+  if (legacyApplied.includes(stage)) return "applied";
+
+  return "saved";
+}
+
+// ---------------------------------------------------------------------------
+// listForUser
+// ---------------------------------------------------------------------------
 
 export const listForUser = query({
   args: {},
@@ -21,13 +67,18 @@ export const listForUser = query({
     const applications = await ctx.db
       .query("applications")
       .withIndex("byUser", (q) => q.eq("userId", userId))
-      .order("desc")
       .collect();
 
     const results = await Promise.all(
       applications.map(async (app) => {
         const job = await ctx.db.get(app.jobId);
         if (!job) return null;
+
+        // Most recent activity = last stageHistory entry's timestamp
+        const lastActivityAt =
+          app.stageHistory.length > 0
+            ? app.stageHistory[app.stageHistory.length - 1].at
+            : app._creationTime;
 
         // Find when the application was first marked "applied"
         const appliedEntry = app.stageHistory.find((h) => h.stage === "applied");
@@ -46,15 +97,23 @@ export const listForUser = query({
 
         const applyUrl = job.sourceIds[0]?.applyUrl ?? null;
 
+        const displayStatus = deriveDisplayStatus(
+          app.stage,
+          job.isActive,
+          job.expiresAt,
+        );
+
         return {
           _id: app._id,
           jobId: app.jobId,
           stage: app.stage,
+          displayStatus,
           outcome: app.outcome ?? null,
           stageHistory: app.stageHistory,
           notes: app.notes ?? null,
           scoreAtApply: app.scoreAtApply ?? null,
           generatedCvData: app.generatedCvData ?? null,
+          lastActivityAt,
           // Job details
           jobTitle: job.title,
           company: job.company,
@@ -64,7 +123,7 @@ export const listForUser = query({
           salaryMin: job.salaryMin ?? null,
           salaryMax: job.salaryMax ?? null,
           applyUrl,
-          // Logo helpers (computed server-side to avoid shipping the full map to the client)
+          // Logo helpers (computed server-side)
           logoInitials: getInitials(job.company),
           logoColor: getInitialsColor(job.company),
           // Time helpers
@@ -75,7 +134,12 @@ export const listForUser = query({
       }),
     );
 
-    return results.filter(<T>(x: T | null): x is T => x !== null);
+    const filtered = results.filter(<T>(x: T | null): x is T => x !== null);
+
+    // Sort by most recent activity descending
+    filtered.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+
+    return filtered;
   },
 });
 

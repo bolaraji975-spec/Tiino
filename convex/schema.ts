@@ -144,6 +144,8 @@ export default defineSchema({
       v.literal("saved"),
       v.literal("cv_generated"),
       v.literal("applied"),
+      v.literal("expired"),
+      // Legacy stages kept for backward compatibility with existing records
       v.literal("acknowledged"),
       v.literal("interview_scheduled"),
       v.literal("interview_done"),

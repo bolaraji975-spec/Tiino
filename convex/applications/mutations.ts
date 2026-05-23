@@ -1,10 +1,15 @@
 /**
- * applications/mutations.ts — tracker mutations.
+ * applications/mutations.ts — application tracker mutations.
  *
- * saveJob:                idempotent save; free users capped at 3.
- * unsaveJob:              removes a saved-stage application.
- * advanceApplicationStage: moves an application forward through the tracker
- *                          pipeline, appending to stageHistory.
+ * saveJob:          idempotent save; free users capped at 3.
+ * unsaveJob:        removes a saved-stage application.
+ * trackApply:       marks an application as "applied" when the user opens the
+ *                   external job link — creates an application record if none
+ *                   exists yet.
+ * removeApplication: deletes an application from history.
+ *
+ * Internal helpers for generateApplication and buildCvDocx actions are
+ * exported as _-prefixed internalQuery / internalMutation.
  */
 
 import { ConvexError, v } from "convex/values";
@@ -86,6 +91,83 @@ export const unsaveJob = mutation({
 
     await ctx.db.delete(application._id);
     return application._id;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// trackApply
+// ---------------------------------------------------------------------------
+
+/**
+ * Called when the user opens the external employer link from the Apply modal.
+ * - If no application exists yet: creates one at "applied" stage.
+ * - If existing application is at "saved" or "cv_generated": advances to "applied".
+ * - If already at "applied" (or a legacy stage): idempotent no-op.
+ */
+export const trackApply = mutation({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, { jobId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ code: "UNAUTHORIZED", message: "Not authenticated." });
+    }
+
+    const now = Date.now();
+
+    const existing = await ctx.db
+      .query("applications")
+      .withIndex("byJob", (q) => q.eq("jobId", jobId))
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .first();
+
+    if (existing) {
+      // Already applied (or past that point) — idempotent
+      const alreadyApplied = existing.stage !== "saved" && existing.stage !== "cv_generated";
+      if (alreadyApplied) return existing._id;
+
+      await ctx.db.patch(existing._id, {
+        stage: "applied",
+        stageHistory: [...existing.stageHistory, { stage: "applied", at: now }],
+      });
+      return existing._id;
+    }
+
+    // No prior record — create one with a synthetic save + apply entry
+    return await ctx.db.insert("applications", {
+      userId,
+      jobId,
+      stage: "applied",
+      stageHistory: [
+        { stage: "saved", at: now },
+        { stage: "applied", at: now },
+      ],
+    });
+  },
+});
+
+// ---------------------------------------------------------------------------
+// removeApplication
+// ---------------------------------------------------------------------------
+
+/**
+ * Permanently deletes an application from history.
+ * Only the owning user may remove their own records.
+ */
+export const removeApplication = mutation({
+  args: { applicationId: v.id("applications") },
+  handler: async (ctx, { applicationId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError({ code: "UNAUTHORIZED", message: "Not authenticated." });
+    }
+
+    const app = await ctx.db.get(applicationId);
+    if (!app || app.userId !== userId) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "Application not found." });
+    }
+
+    await ctx.db.delete(applicationId);
+    return applicationId;
   },
 });
 
@@ -190,103 +272,5 @@ export const _setDocxFileIds = internalMutation({
   },
   handler: async (ctx, { applicationId, cvFileId, coverLetterFileId }) => {
     await ctx.db.patch(applicationId, { cvFileId, coverLetterFileId });
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Stage-transition helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Valid forward transitions keyed by current stage.
- * "closed" is a terminal state — no further transitions.
- * Any non-closed stage can move to "closed" (rejected / withdrawn).
- */
-const VALID_TRANSITIONS: Record<string, string[]> = {
-  saved:                ["cv_generated", "applied", "closed"],
-  cv_generated:         ["applied", "closed"],
-  applied:              ["acknowledged", "closed"],
-  acknowledged:         ["interview_scheduled", "closed"],
-  interview_scheduled:  ["interview_done", "closed"],
-  interview_done:       ["offer_received", "closed"],
-  offer_received:       ["closed"],
-  closed:               [],
-};
-
-// ---------------------------------------------------------------------------
-// advanceApplicationStage
-// ---------------------------------------------------------------------------
-
-/**
- * Moves an application to the next stage in the tracker pipeline.
- *
- * Rules:
- *   – Only the owning user can advance their own application.
- *   – Only transitions listed in VALID_TRANSITIONS are permitted.
- *   – Transitioning to "closed" requires an outcome.
- *   – Each call appends a { stage, at } entry to stageHistory.
- */
-export const advanceApplicationStage = mutation({
-  args: {
-    applicationId: v.id("applications"),
-    toStage: v.union(
-      v.literal("cv_generated"),
-      v.literal("applied"),
-      v.literal("acknowledged"),
-      v.literal("interview_scheduled"),
-      v.literal("interview_done"),
-      v.literal("offer_received"),
-      v.literal("closed"),
-    ),
-    outcome: v.optional(
-      v.union(
-        v.literal("offer_accepted"),
-        v.literal("offer_declined"),
-        v.literal("rejected"),
-        v.literal("ghosted"),
-        v.literal("withdrawn"),
-      ),
-    ),
-    notes: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new ConvexError({ code: "UNAUTHORIZED", message: "Not authenticated." });
-    }
-
-    const app = await ctx.db.get(args.applicationId);
-    if (!app || app.userId !== userId) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Application not found." });
-    }
-
-    const allowed = VALID_TRANSITIONS[app.stage] ?? [];
-    if (!allowed.includes(args.toStage)) {
-      throw new ConvexError({
-        code: "INVALID_TRANSITION",
-        message: `Cannot move from "${app.stage}" to "${args.toStage}". Check the allowed transitions.`,
-      });
-    }
-
-    if (args.toStage === "closed" && !args.outcome) {
-      throw new ConvexError({
-        code: "VALIDATION",
-        message: "An outcome is required when closing an application.",
-      });
-    }
-
-    await ctx.db.patch(args.applicationId, {
-      stage: args.toStage,
-      stageHistory: [
-        ...app.stageHistory,
-        { stage: args.toStage, at: Date.now() },
-      ],
-      ...(args.outcome !== undefined ? { outcome: args.outcome } : {}),
-      ...(args.notes !== undefined && args.notes.trim() !== ""
-        ? { notes: args.notes.trim() }
-        : {}),
-    });
-
-    return args.applicationId;
   },
 });
