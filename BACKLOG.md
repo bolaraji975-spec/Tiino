@@ -632,6 +632,17 @@
 **Deps:** 048
 **DOD:** Recalibration produces meaningfully different scores for different role types at the same employer where data supports it.
 
+### 081 — Chrome Extension [P2]
+**Goal:** Browser extension that overlays Tino sponsorship scores on LinkedIn, Indeed, Reed, and Totaljobs job listings. Shows score band badge on each job card. Click badge opens a sidebar with full score breakdown, save to Tino button, and generate CV button.
+**Files:** New repo `tiino-extension/` — Manifest V3, content scripts per job board, background service worker, sidebar panel.
+**Deps:** 060 (app launched), public API endpoint on Convex HTTP router.
+**DOD:**
+- Extension installs from Chrome Web Store
+- Score badges appear on LinkedIn and Indeed job listings
+- Clicking badge opens Tino sidebar
+- Save and Generate CV work from the sidebar
+- Auth syncs with tiino.app session
+
 ---
 
 ## How to use this list
