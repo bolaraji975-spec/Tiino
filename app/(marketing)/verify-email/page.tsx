@@ -1,8 +1,10 @@
 "use client";
 
 import { useAuthActions } from "@convex-dev/auth/react";
+import { useQuery } from "convex/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useState } from "react";
+import { api } from "@/convex/_generated/api";
 
 // ---------------------------------------------------------------------------
 // Inner component (reads search params — must be inside Suspense)
@@ -13,6 +15,15 @@ function VerifyEmailForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const code = searchParams.get("code") ?? "";
+
+  // If the user already has a valid session (e.g. they re-clicked the link,
+  // or the middleware token check lagged behind hydration), skip to /jobs.
+  const user = useQuery(api.users.getCurrentUser);
+  useEffect(() => {
+    if (user) {
+      router.replace("/jobs");
+    }
+  }, [user, router]);
 
   type State = "verifying" | "check-email" | "resending" | "resent" | "error";
   const [state, setState] = useState<State>(code ? "verifying" : "check-email");
