@@ -20,6 +20,7 @@ import type * as jobs_ingestMutations from "../jobs/ingestMutations.js";
 import type * as jobs_queries from "../jobs/queries.js";
 import type * as jobs_score from "../jobs/score.js";
 import type * as jobs_sources_adzuna from "../jobs/sources/adzuna.js";
+import type * as jobs_sources_apprenticeships from "../jobs/sources/apprenticeships.js";
 import type * as jobs_sources_civilservice from "../jobs/sources/civilservice.js";
 import type * as jobs_sources_findajob from "../jobs/sources/findajob.js";
 import type * as jobs_sources_jobsac from "../jobs/sources/jobsac.js";
@@ -71,6 +72,7 @@ declare const fullApi: ApiFromModules<{
   "jobs/queries": typeof jobs_queries;
   "jobs/score": typeof jobs_score;
   "jobs/sources/adzuna": typeof jobs_sources_adzuna;
+  "jobs/sources/apprenticeships": typeof jobs_sources_apprenticeships;
   "jobs/sources/civilservice": typeof jobs_sources_civilservice;
   "jobs/sources/findajob": typeof jobs_sources_findajob;
   "jobs/sources/jobsac": typeof jobs_sources_jobsac;

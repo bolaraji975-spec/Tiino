@@ -91,7 +91,6 @@ export default defineSchema({
           v.literal("civil_service"),
           v.literal("jobs_ac"),
           v.literal("find_a_job"),
-          v.literal("apprenticeships"),
         ),
         externalId: v.string(),
         applyUrl: v.string(),

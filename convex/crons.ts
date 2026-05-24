@@ -61,18 +61,6 @@ crons.daily(
 );
 
 // ---------------------------------------------------------------------------
-// Job ingestion — UK Apprenticeships
-// Daily 05:15 UTC
-// ---------------------------------------------------------------------------
-
-crons.daily(
-  "ingest apprenticeships",
-  { hourUTC: 5, minuteUTC: 15 },
-  api.jobs.ingest.ingestFromSource,
-  { source: "apprenticeships", mode: "explicit" },
-);
-
-// ---------------------------------------------------------------------------
 // Job ingestion — broad search (wider net, weekly)
 // Sunday 03:00 UTC — Reed broad + Adzuna broad
 // ---------------------------------------------------------------------------

@@ -22,7 +22,6 @@ import { fetchNhsJobs } from "./sources/nhs";
 import { fetchCivilServiceJobs } from "./sources/civilservice";
 import { fetchJobsAc } from "./sources/jobsac";
 import { fetchFindAJob } from "./sources/findajob";
-import { fetchApprenticeships } from "./sources/apprenticeships";
 import { normaliseJob } from "../lib/normaliseJob";
 import { detectSponsorshipSignal } from "../lib/detectSponsorshipSignal";
 import { normaliseName } from "../lib/normaliseName";
@@ -86,7 +85,6 @@ export const ingestFromSource = action({
       v.literal("civil_service"),
       v.literal("jobs_ac"),
       v.literal("find_a_job"),
-      v.literal("apprenticeships"),
     ),
     mode: v.union(v.literal("explicit"), v.literal("broad")),
   },
@@ -117,8 +115,6 @@ export const ingestFromSource = action({
       rawJobs = await fetchCivilServiceJobs();
     } else if (source === "find_a_job") {
       rawJobs = await fetchFindAJob();
-    } else if (source === "apprenticeships") {
-      rawJobs = await fetchApprenticeships(process.env.APPRENTICESHIPS_API_KEY ?? "");
     } else {
       rawJobs = await fetchJobsAc();
     }
