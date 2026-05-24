@@ -2,7 +2,7 @@
  * Shared types for job ingestion pipeline.
  */
 
-export type JobSource = "reed" | "adzuna" | "nhs" | "civil_service" | "jobs_ac" | "find_a_job";
+export type JobSource = "reed" | "adzuna" | "nhs" | "civil_service" | "jobs_ac" | "find_a_job" | "apprenticeships";
 
 /**
  * Raw job as returned by a source adapter — before normalisation.
