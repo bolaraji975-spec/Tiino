@@ -56,4 +56,6 @@ export type CanonicalJob = {
   postedAt: number;
   isAgency: boolean;
   isPublicSector: boolean;
+  /** False when the job is detected as non-UK at normalisation time. */
+  isActive?: boolean;
 };

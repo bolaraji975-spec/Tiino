@@ -98,6 +98,7 @@ const jobInputValidator = v.object({
   extractedCriteria: v.optional(v.array(v.string())),
   signalExplicit: v.boolean(),
   signalNegative: v.boolean(),
+  isActive: v.optional(v.boolean()),
 });
 
 // ---------------------------------------------------------------------------
@@ -237,7 +238,7 @@ export const _upsertBatch = internalMutation({
         scoreBreakdown,
         ...(sponsorId ? { sponsorId } : {}),
         ...(job.signalExplicit ? { explicit: true } : {}),
-        isActive: true,
+        isActive: job.isActive ?? true,
       });
 
       upserted++;

@@ -101,6 +101,35 @@ export const getJobById = query({
 const HARD_LIMIT = 100;
 
 // ---------------------------------------------------------------------------
+// Non-UK location filter
+// ---------------------------------------------------------------------------
+
+const NON_UK_QUERY_COUNTRIES = [
+  "portugal", "spain", "france", "germany", "netherlands",
+  "ireland", "poland", "romania", "india", "usa", "united states",
+  "canada", "australia", "remote",
+];
+
+const UK_QUERY_INDICATORS = ["uk", "london", "england", "scotland", "wales"];
+
+/**
+ * Returns true if the job location should be shown in the UK feed.
+ * A job passes if its location contains a UK indicator OR contains no
+ * non-UK country name.
+ */
+function isUkJob(location: string): boolean {
+  const loc = location.toLowerCase();
+  if (UK_QUERY_INDICATORS.some((ind) => loc.includes(ind))) return true;
+  return !NON_UK_QUERY_COUNTRIES.some((country) => {
+    const idx = loc.indexOf(country);
+    if (idx === -1) return false;
+    const before = idx === 0 ? true : !/[a-z]/.test(loc[idx - 1]);
+    const after = idx + country.length >= loc.length ? true : !/[a-z]/.test(loc[idx + country.length]);
+    return before && after;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // listForUser
 // ---------------------------------------------------------------------------
 
@@ -195,7 +224,10 @@ export const listForUser = query({
       filtered = filtered.filter((j) => j.sponsorshipBand !== "very_low");
     }
 
-    // ── 3. Location filter (case-insensitive substring) ───────────────────
+    // ── 3. Non-UK location filter ─────────────────────────────────────────
+    filtered = filtered.filter((j) => isUkJob(j.location));
+
+    // ── 4. Location filter (case-insensitive substring) ───────────────────
     if (args.location) {
       const loc = args.location.toLowerCase().trim();
       if (loc) {
@@ -205,7 +237,7 @@ export const listForUser = query({
       }
     }
 
-    // ── 4. Salary filter ──────────────────────────────────────────────────
+    // ── 5. Salary filter ──────────────────────────────────────────────────
     // Jobs with no salary listed are included (unknown ≠ below threshold).
     if (args.salaryMin !== undefined && args.salaryMin > 0) {
       const threshold = args.salaryMin;
@@ -214,7 +246,7 @@ export const listForUser = query({
       );
     }
 
-    // ── 5. Posted-within filter ───────────────────────────────────────────
+    // ── 6. Posted-within filter ───────────────────────────────────────────
     if (args.postedWithin) {
       const ms = {
         "24h": 86_400_000,
@@ -225,7 +257,7 @@ export const listForUser = query({
       filtered = filtered.filter((j) => j.postedAt >= cutoff);
     }
 
-    // ── 6. Source filter ──────────────────────────────────────────────────
+    // ── 7. Source filter ──────────────────────────────────────────────────
     if (args.source) {
       if (args.source === "private") {
         filtered = filtered.filter((j) => !j.isPublicSector);
@@ -253,7 +285,9 @@ export const listForUser = query({
     // relaxed.
     const FALLBACK_THRESHOLD = 5;
     if (variations.length > 0 && filtered.length < FALLBACK_THRESHOLD) {
-      let fallback = allActive.filter((j) => j.sponsorshipBand !== "very_low");
+      let fallback = allActive.filter(
+        (j) => j.sponsorshipBand !== "very_low" && isUkJob(j.location),
+      );
 
       if (args.band) {
         fallback = fallback.filter((j) => j.sponsorshipBand === args.band);

@@ -141,6 +141,7 @@ export const ingestFromSource = action({
         isPublicSector: job.isPublicSector,
         signalExplicit: signalExplicitOverride || signal.explicit,
         signalNegative: signal.negative,
+        isActive: job.isActive,
       };
     });
 

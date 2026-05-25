@@ -61,22 +61,6 @@ function relativeTime(ms: number): string {
   return w === 1 ? "1w ago" : `${w}w ago`;
 }
 
-function stripHtml(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n\n")
-    .replace(/<\/li>/gi, "\n")
-    .replace(/<li[^>]*>/gi, "• ")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1031,7 +1015,6 @@ function JobDetailPanel({ jobId, isMobile, onBack }: JobDetailPanelProps) {
 
   const { job, sponsor, isPro, hasCvUploaded, matchesProfile } = result;
   const applyUrl = job.sourceIds[0]?.applyUrl ?? "#";
-  const description = stripHtml(job.description);
   const salary = formatSalary(job.salaryMin, job.salaryMax);
 
   return (
@@ -1312,19 +1295,19 @@ function JobDetailPanel({ jobId, isMobile, onBack }: JobDetailPanelProps) {
           >
             About this role
           </div>
-          <pre
+          <div
+            // HTML comes from trusted employer ATS boards (Greenhouse, Lever,
+            // Workable, etc.) — safe to render directly.
+            dangerouslySetInnerHTML={{ __html: job.description }}
             style={{
               margin: 0,
               fontFamily: "'Plus Jakarta Sans', sans-serif",
               fontSize: 13,
               lineHeight: 1.75,
               color: "rgba(255,255,255,0.60)",
-              whiteSpace: "pre-wrap",
               wordBreak: "break-word",
             }}
-          >
-            {description}
-          </pre>
+          />
         </div>
       </div>
     </div>

@@ -98,6 +98,7 @@ export const ingestFromAts = action({
             isPublicSector: false, // ATS sources are not public sector
             signalExplicit: true, // confirmed UKVI sponsor, treat as explicit
             signalNegative: signal.negative,
+            isActive: job.isActive,
             extractedCriteria: undefined as string[] | undefined,
           };
         });

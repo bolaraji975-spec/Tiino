@@ -20,6 +20,43 @@ import { normaliseName } from "./normaliseName";
 const PUBLIC_SECTOR_SOURCES: JobSource[] = ["nhs", "civil_service", "jobs_ac"];
 
 // ---------------------------------------------------------------------------
+// UK / non-UK location detection
+// ---------------------------------------------------------------------------
+
+const UK_INDICATORS = [
+  "uk", "united kingdom", "england", "scotland", "wales",
+  "london", "manchester", "birmingham", "leeds", "bristol",
+  "edinburgh", "glasgow", "sheffield", "liverpool", "cambridge",
+  "oxford", "nottingham", "newcastle", "cardiff",
+];
+
+const NON_UK_COUNTRIES = [
+  "portugal", "spain", "france", "germany", "netherlands",
+  "ireland", "poland", "romania", "india", "usa", "united states",
+  "canada", "australia", "remote",
+];
+
+/**
+ * Returns false if the location clearly refers to a non-UK country and
+ * contains no UK indicator. Returns true (active) in all other cases —
+ * including when the location is ambiguous or empty.
+ */
+function isUkLocation(location: string): boolean {
+  const loc = location.toLowerCase();
+  const hasUkIndicator = UK_INDICATORS.some((ind) => loc.includes(ind));
+  if (hasUkIndicator) return true;
+  const hasNonUk = NON_UK_COUNTRIES.some((country) => {
+    // Use word-boundary-like check: surrounded by non-alpha or string edges
+    const idx = loc.indexOf(country);
+    if (idx === -1) return false;
+    const before = idx === 0 ? true : !/[a-z]/.test(loc[idx - 1]);
+    const after = idx + country.length >= loc.length ? true : !/[a-z]/.test(loc[idx + country.length]);
+    return before && after;
+  });
+  return !hasNonUk;
+}
+
+// ---------------------------------------------------------------------------
 // Salary normalisation
 // ---------------------------------------------------------------------------
 
@@ -129,6 +166,8 @@ export function normaliseJob(raw: RawJob): CanonicalJob {
   const isAgency =
     raw.isAgency !== undefined ? raw.isAgency : detectAgency(raw.company);
 
+  const isActive = isUkLocation(raw.location);
+
   return {
     sourceId: {
       source: raw.source,
@@ -147,5 +186,6 @@ export function normaliseJob(raw: RawJob): CanonicalJob {
     postedAt: raw.postedAt,
     isAgency,
     isPublicSector: PUBLIC_SECTOR_SOURCES.includes(raw.source),
+    isActive,
   };
 }
