@@ -1,3 +1,4 @@
+"use node";
 /**
  * refresh.ts
  *
@@ -7,10 +8,13 @@
  *
  * Run manually:  npx convex run sponsors/refresh:refreshSponsorRegister '{}'
  * Scheduled:     weekly cron in convex/crons.ts (Monday 02:00 UTC)
+ *
+ * Note: "use node" is required here because the gov.uk CSV is several MB —
+ * the V8 runtime has a ~512 KB response body limit which causes fetch to fail.
+ * Mutations are split into refreshMutations.ts (mutations can't run in Node.js).
  */
 
-import { action, internalMutation } from "../_generated/server";
-import { v } from "convex/values";
+import { action } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { parseSponsorCsv } from "../lib/parseSponsorCsv";
 import {
@@ -80,9 +84,11 @@ export const refreshSponsorRegister = action({
     // --- 1. Discover CSV URL ---
     try {
       csvUrl = await discoverCsvUrl();
+      console.log(`Discovered CSV URL: ${csvUrl}`);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      await ctx.runMutation(internal.sponsors.refresh._recordSnapshot, {
+      const errorMessage = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      console.error(`Step 1 failed: ${errorMessage}`);
+      await ctx.runMutation(internal.sponsors.refreshMutations._recordSnapshot, {
         fetchedAt,
         csvUrl: REGISTER_PAGE_URL,
         totalRows: 0,
@@ -91,20 +97,23 @@ export const refreshSponsorRegister = action({
         errorMessage,
       });
       await sendRefreshFailureAlert(errorMessage);
-      throw err;
+      throw new Error(`Step 1 (discover CSV URL) failed: ${errorMessage}`);
     }
 
     // --- 2. Download CSV ---
     let csvText: string;
     try {
+      console.log(`Downloading CSV from: ${csvUrl}`);
       const csvRes = await fetch(csvUrl);
       if (!csvRes.ok) {
         throw new Error(`CSV download failed (HTTP ${csvRes.status}): ${csvUrl}`);
       }
       csvText = await csvRes.text();
+      console.log(`Downloaded CSV: ${csvText.length} chars`);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      await ctx.runMutation(internal.sponsors.refresh._recordSnapshot, {
+      const errorMessage = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      console.error(`Step 2 failed: ${errorMessage}`);
+      await ctx.runMutation(internal.sponsors.refreshMutations._recordSnapshot, {
         fetchedAt,
         csvUrl,
         totalRows: 0,
@@ -113,43 +122,74 @@ export const refreshSponsorRegister = action({
         errorMessage,
       });
       await sendRefreshFailureAlert(errorMessage);
-      throw err;
+      throw new Error(`Step 2 (download CSV) failed: ${errorMessage}`);
     }
 
     // --- 3. Parse CSV ---
-    const { records, totalRows } = parseSponsorCsv(csvText, fetchedAt);
+    let records: ReturnType<typeof parseSponsorCsv>["records"];
+    let totalRows: number;
+    try {
+      const parsed = parseSponsorCsv(csvText, fetchedAt);
+      records = parsed.records;
+      totalRows = parsed.totalRows;
+      console.log(`Parsed CSV: ${totalRows} total rows, ${records.length} Skilled Worker sponsors`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      await ctx.runMutation(internal.sponsors.refreshMutations._recordSnapshot, {
+        fetchedAt,
+        csvUrl,
+        totalRows: 0,
+        activeCount: 0,
+        status: "error",
+        errorMessage: `CSV parse failed: ${errorMessage}`,
+      });
+      throw new Error(`CSV parse failed: ${errorMessage}`);
+    }
 
     // --- 4. Upsert all records in batches ---
-    for (let i = 0; i < records.length; i += BATCH_SIZE) {
-      const batch = records.slice(i, i + BATCH_SIZE);
-      await ctx.runMutation(internal.sponsors.refresh._upsertBatch, {
-        records: batch.map((r) => ({
-          legalName: r.legalName,
-          normalisedName: r.normalisedName,
-          town: r.town ?? null,
-          county: r.county ?? null,
-          rating: r.rating,
-          route: r.route,
-          fetchedAt,
-        })),
-      });
+    try {
+      for (let i = 0; i < records.length; i += BATCH_SIZE) {
+        const batch = records.slice(i, i + BATCH_SIZE);
+        await ctx.runMutation(internal.sponsors.refreshMutations._upsertBatch, {
+          records: batch.map((r) => ({
+            legalName: r.legalName,
+            normalisedName: r.normalisedName,
+            town: r.town ?? null,
+            county: r.county ?? null,
+            rating: r.rating,
+            route: r.route,
+            fetchedAt,
+          })),
+        });
+        if (i % 10000 === 0) {
+          console.log(`Upserted ${i}/${records.length} sponsors`);
+        }
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      throw new Error(`Upsert batch failed: ${errorMessage}`);
     }
 
     // --- 5. Deactivate sponsors absent from this run ---
     let deactivated = 0;
     let hasMore = true;
-    while (hasMore) {
-      const count = await ctx.runMutation(
-        internal.sponsors.refresh._deactivateStaleBatch,
-        { fetchedAt },
-      );
-      deactivated += count;
-      hasMore = count > 0;
+    try {
+      while (hasMore) {
+        const count = await ctx.runMutation(
+          internal.sponsors.refreshMutations._deactivateStaleBatch,
+          { fetchedAt },
+        );
+        deactivated += count;
+        hasMore = count > 0;
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      throw new Error(`Deactivate stale failed: ${errorMessage}`);
     }
 
     // --- 6. Record snapshot and check for drop alert ---
     const { previousActiveCount } = await ctx.runMutation(
-      internal.sponsors.refresh._recordSnapshot,
+      internal.sponsors.refreshMutations._recordSnapshot,
       {
         fetchedAt,
         csvUrl,
@@ -167,157 +207,5 @@ export const refreshSponsorRegister = action({
     }
 
     return { totalRows, activeCount: records.length, deactivated };
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Internal mutations
-// ---------------------------------------------------------------------------
-
-/**
- * Upsert a batch of sponsor records.
- * Matches on normalisedName — if found, patches in place; otherwise inserts.
- */
-export const _upsertBatch = internalMutation({
-  args: {
-    records: v.array(
-      v.object({
-        legalName: v.string(),
-        normalisedName: v.string(),
-        town: v.union(v.string(), v.null()),
-        county: v.union(v.string(), v.null()),
-        rating: v.string(),
-        route: v.string(),
-        fetchedAt: v.number(),
-      }),
-    ),
-  },
-  handler: async (ctx, { records }) => {
-    for (const record of records) {
-      const existing = await ctx.db
-        .query("sponsors")
-        .withIndex("byNormalisedName", (q) =>
-          q.eq("normalisedName", record.normalisedName),
-        )
-        .first();
-
-      if (existing) {
-        await ctx.db.patch(existing._id, {
-          legalName: record.legalName,
-          town: record.town ?? undefined,
-          county: record.county ?? undefined,
-          rating: record.rating,
-          route: record.route,
-          isActive: true,
-          fetchedAt: record.fetchedAt,
-        });
-      } else {
-        await ctx.db.insert("sponsors", {
-          legalName: record.legalName,
-          normalisedName: record.normalisedName,
-          town: record.town ?? undefined,
-          county: record.county ?? undefined,
-          rating: record.rating,
-          route: record.route,
-          isActive: true,
-          fetchedAt: record.fetchedAt,
-        });
-      }
-    }
-  },
-});
-
-/**
- * Deactivate up to BATCH_SIZE active sponsors whose fetchedAt predates
- * the current run. Called in a loop from the action until it returns 0.
- */
-export const _deactivateStaleBatch = internalMutation({
-  args: { fetchedAt: v.number() },
-  handler: async (ctx, { fetchedAt }): Promise<number> => {
-    const stale = await ctx.db
-      .query("sponsors")
-      .withIndex("byActive", (q) => q.eq("isActive", true))
-      .filter((q) => q.lt(q.field("fetchedAt"), fetchedAt))
-      .take(BATCH_SIZE);
-
-    for (const sponsor of stale) {
-      await ctx.db.patch(sponsor._id, { isActive: false });
-    }
-
-    return stale.length;
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Snapshot diff helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Compute the added/removed sponsor diff between two consecutive snapshots.
- *
- * Because we only store the aggregate `activeCount` per snapshot (not the full
- * set of normalised names), the diff is a net-delta split: if the active count
- * rose by N then addedSinceLast=N and removedSinceLast=0, and vice-versa.
- *
- * Returns `{ addedSinceLast: undefined, removedSinceLast: undefined }` when:
- * - there is no previous snapshot (first-ever run), or
- * - the current run has status "error" (counts are unreliable).
- *
- * @param currentActiveCount  - Active-sponsor count from the current run
- * @param previousActiveCount - Active-sponsor count from the last snapshot, or undefined
- * @param currentStatus       - "ok" | "error"
- */
-export function computeSnapshotDiff(
-  currentActiveCount: number,
-  previousActiveCount: number | undefined,
-  currentStatus: "ok" | "error",
-): { addedSinceLast: number | undefined; removedSinceLast: number | undefined } {
-  if (previousActiveCount === undefined || currentStatus === "error") {
-    return { addedSinceLast: undefined, removedSinceLast: undefined };
-  }
-  return {
-    addedSinceLast: Math.max(0, currentActiveCount - previousActiveCount),
-    removedSinceLast: Math.max(0, previousActiveCount - currentActiveCount),
-  };
-}
-
-/**
- * Insert a sponsorSnapshots row. Computes added/removed diffs against
- * the most recent previous snapshot when status is "ok".
- */
-export const _recordSnapshot = internalMutation({
-  args: {
-    fetchedAt: v.number(),
-    csvUrl: v.string(),
-    totalRows: v.number(),
-    activeCount: v.number(),
-    status: v.union(v.literal("ok"), v.literal("error")),
-    errorMessage: v.optional(v.string()),
-  },
-  handler: async (ctx, args): Promise<{ previousActiveCount: number | undefined }> => {
-    const previous = await ctx.db
-      .query("sponsorSnapshots")
-      .withIndex("byFetchedAt")
-      .order("desc")
-      .first();
-
-    const { addedSinceLast, removedSinceLast } = computeSnapshotDiff(
-      args.activeCount,
-      previous?.activeCount,
-      args.status,
-    );
-
-    await ctx.db.insert("sponsorSnapshots", {
-      fetchedAt: args.fetchedAt,
-      csvUrl: args.csvUrl,
-      totalRows: args.totalRows,
-      activeCount: args.activeCount,
-      addedSinceLast,
-      removedSinceLast,
-      status: args.status,
-      errorMessage: args.errorMessage,
-    });
-
-    return { previousActiveCount: previous?.activeCount };
   },
 });

@@ -81,7 +81,11 @@ export default defineSchema({
     careersUrl: v.optional(v.string()),
   })
     .index("byNormalisedName", ["normalisedName"])
-    .index("byActive", ["isActive"]),
+    .index("byActive", ["isActive"])
+    // Compound index used by _deactivateStaleBatch to find active sponsors
+    // whose fetchedAt predates the current refresh run — avoids a full-table
+    // scan that would otherwise exceed the 32k document-read limit.
+    .index("byActiveFetched", ["isActive", "fetchedAt"]),
 
   jobs: defineTable({
     sourceIds: v.array(

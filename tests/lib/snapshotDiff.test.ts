@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeSnapshotDiff } from "../../convex/sponsors/refresh";
+import { computeSnapshotDiff } from "../../convex/sponsors/refreshMutations";
 
 describe("computeSnapshotDiff", () => {
   // --- First snapshot (no previous) ---

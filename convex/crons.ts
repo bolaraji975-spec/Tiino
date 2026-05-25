@@ -61,6 +61,18 @@ crons.daily(
 );
 
 // ---------------------------------------------------------------------------
+// Job ingestion — ATS boards (dynamic, driven by sponsors.careersUrl)
+// Nightly 05:15 UTC — fetches from all UKVI sponsors with a careers URL set
+// ---------------------------------------------------------------------------
+
+crons.daily(
+  "ingest ats",
+  { hourUTC: 5, minuteUTC: 15 },
+  api.jobs.ingestAts.ingestFromAts,
+  {},
+);
+
+// ---------------------------------------------------------------------------
 // Job ingestion — broad search (wider net, weekly)
 // Sunday 03:00 UTC — Reed broad + Adzuna broad
 // ---------------------------------------------------------------------------
