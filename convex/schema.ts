@@ -77,6 +77,8 @@ export default defineSchema({
     route: v.string(),       // "Skilled Worker", "Intra-Company Transfer", etc.
     isActive: v.boolean(),
     fetchedAt: v.number(),
+    // ATS enrichment — populated by convex/sponsors/enrichCareersUrls.ts
+    careersUrl: v.optional(v.string()),
   })
     .index("byNormalisedName", ["normalisedName"])
     .index("byActive", ["isActive"]),
@@ -91,6 +93,13 @@ export default defineSchema({
           v.literal("civil_service"),
           v.literal("jobs_ac"),
           v.literal("find_a_job"),
+          v.literal("greenhouse"),
+          v.literal("lever"),
+          v.literal("workable"),
+          v.literal("smartrecruiters"),
+          v.literal("recruitee"),
+          v.literal("ashby"),
+          v.literal("breezy"),
         ),
         externalId: v.string(),
         applyUrl: v.string(),
